@@ -1,0 +1,82 @@
+import type { LevelConfig } from '../types';
+
+export const levels: LevelConfig[] = [
+  {
+    id: 'lake',
+    displayName: 'Lake',
+    depth: 1,
+    fishPool: [
+      'bluegill',
+      'largemouth-bass',
+      'smallmouth-bass',
+      'rainbow-trout',
+      'channel-catfish',
+      'northern-pike',
+      'walleye',
+      'common-carp',
+    ],
+    palette: {
+      skyTop: 0x78b7d4,
+      skyBottom: 0xd9efdf,
+      shore: 0x6d8f4d,
+      waterTop: 0x5fb6c4,
+      waterMid: 0x257d92,
+      waterBottom: 0x123b56,
+      lakeBed: 0x7c6544,
+    },
+    spawnIntervalMs: [520, 1050],
+  },
+  {
+    id: 'river',
+    displayName: 'River',
+    unlockRequirement: { money: 1500, boatId: 'rowboat' },
+    depth: 0.8,
+    fishPool: ['smallmouth-bass', 'rainbow-trout', 'walleye', 'channel-catfish'],
+    palette: {
+      skyTop: 0x89bdd3,
+      skyBottom: 0xe0f1dd,
+      shore: 0x7e9959,
+      waterTop: 0x69b8ac,
+      waterMid: 0x2f887f,
+      waterBottom: 0x1c4e59,
+      lakeBed: 0x856b46,
+    },
+    spawnIntervalMs: [900, 1700],
+  },
+  {
+    id: 'lagoon',
+    displayName: 'Lagoon',
+    unlockRequirement: { money: 2600, boatId: 'bass-boat' },
+    depth: 0.9,
+    fishPool: ['bluegill', 'largemouth-bass', 'common-carp', 'northern-pike'],
+    palette: {
+      skyTop: 0x8ec7c0,
+      skyBottom: 0xf0e5c2,
+      shore: 0x8a9855,
+      waterTop: 0x6bc4a2,
+      waterMid: 0x278974,
+      waterBottom: 0x164c50,
+      lakeBed: 0x8b7047,
+    },
+    spawnIntervalMs: [800, 1600],
+  },
+  {
+    id: 'ocean',
+    displayName: 'Ocean',
+    unlockRequirement: { money: 5000, boatId: 'bass-boat' },
+    depth: 1.5,
+    fishPool: [],
+    palette: {
+      skyTop: 0x6caed8,
+      skyBottom: 0xd8edf0,
+      shore: 0xcaa66b,
+      waterTop: 0x3aa6c5,
+      waterMid: 0x176b9a,
+      waterBottom: 0x082d55,
+      lakeBed: 0x9a7650,
+    },
+    spawnIntervalMs: [1100, 2200],
+  },
+];
+
+export const lakeLevel = levels[0];
