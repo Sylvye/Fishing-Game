@@ -1,12 +1,21 @@
 import type { AssetManifestEntry } from '../types';
-
-const placeholder = (path: string) => new URL(path, import.meta.url).href;
+import bluegillUrl from '../assets/placeholders/fish/bluegill.svg?url';
+import channelCatfishUrl from '../assets/placeholders/fish/channel-catfish.svg?url';
+import commonCarpUrl from '../assets/placeholders/fish/common-carp.svg?url';
+import largemouthBassUrl from '../assets/placeholders/fish/largemouth-bass.svg?url';
+import northernPikeUrl from '../assets/placeholders/fish/northern-pike.svg?url';
+import rainbowTroutUrl from '../assets/placeholders/fish/rainbow-trout.svg?url';
+import smallmouthBassUrl from '../assets/placeholders/fish/smallmouth-bass.png?url';
+import walleyeUrl from '../assets/placeholders/fish/walleye.svg?url';
+import boatRowboatUrl from '../assets/placeholders/items/boat-rowboat.svg?url';
+import lureSpoonUrl from '../assets/placeholders/items/lure-spoon.svg?url';
+import rodBambooUrl from '../assets/placeholders/items/rod-bamboo.svg?url';
 
 export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-bluegill',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/bluegill.svg'),
+    src: bluegillUrl,
     displayName: 'Bluegill placeholder',
     license: 'CC0 1.0 / local simplified derivative placeholder',
     attribution: 'Inspired by Wikimedia Commons file "Bluegill sunfish silhouette.svg" by Abyssal, CC0.',
@@ -16,7 +25,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-largemouth-bass',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/largemouth-bass.svg'),
+    src: largemouthBassUrl,
     displayName: 'Largemouth Bass placeholder',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Denton Largemouth Bass 1896.png", public domain.',
@@ -26,7 +35,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-smallmouth-bass',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/smallmouth-bass.png'),
+    src: smallmouthBassUrl,
     displayName: 'Smallmouth Bass placeholder',
     license: 'Public domain, U.S. Fish and Wildlife Service',
     attribution: 'Duane Raver / U.S. Fish and Wildlife Service via Wikimedia Commons.',
@@ -36,7 +45,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-rainbow-trout',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/rainbow-trout.svg'),
+    src: rainbowTroutUrl,
     displayName: 'Rainbow Trout placeholder',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Rainbow Trout.jpg", public domain, U.S. Fish and Wildlife Service.',
@@ -46,7 +55,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-channel-catfish',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/channel-catfish.svg'),
+    src: channelCatfishUrl,
     displayName: 'Channel Catfish placeholder',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Ictalurus punctatus.jpg", public domain, U.S. Fish and Wildlife Service.',
@@ -56,7 +65,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-northern-pike',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/northern-pike.svg'),
+    src: northernPikeUrl,
     displayName: 'Northern Pike placeholder',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Esox lucius1.jpg", public domain.',
@@ -66,7 +75,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-walleye',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/walleye.svg'),
+    src: walleyeUrl,
     displayName: 'Walleye placeholder',
     license: 'Local placeholder',
     attribution: 'Local simplified placeholder; replace with licensed real walleye art or photo.',
@@ -75,7 +84,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-common-carp',
     kind: 'fish',
-    src: placeholder('../assets/placeholders/fish/common-carp.svg'),
+    src: commonCarpUrl,
     displayName: 'Common Carp placeholder',
     license: 'Local placeholder',
     attribution: 'Local simplified placeholder; replace with licensed real common carp art or photo.',
@@ -84,7 +93,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'rod-bamboo',
     kind: 'rod',
-    src: placeholder('../assets/placeholders/items/rod-bamboo.svg'),
+    src: rodBambooUrl,
     displayName: 'Bamboo Rod placeholder',
     license: 'Local placeholder',
     attribution: 'Created for this project.',
@@ -93,7 +102,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'boat-rowboat',
     kind: 'boat',
-    src: placeholder('../assets/placeholders/items/boat-rowboat.svg'),
+    src: boatRowboatUrl,
     displayName: 'Rowboat placeholder',
     license: 'Local placeholder',
     attribution: 'Created for this project.',
@@ -102,7 +111,7 @@ export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'lure-spoon',
     kind: 'lure',
-    src: placeholder('../assets/placeholders/items/lure-spoon.svg'),
+    src: lureSpoonUrl,
     displayName: 'Spoon Lure placeholder',
     license: 'Local placeholder',
     attribution: 'Created for this project.',
