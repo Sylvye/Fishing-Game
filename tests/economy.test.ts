@@ -1,16 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { fishSpecies } from '../src/data/fish';
-import { applySaleMultiplier, buyOrEquipItem, createCaughtFish, fishValue, randomFishWeight, recordCatch } from '../src/systems/economy';
+import { baitById, lureById } from '../src/data/items';
+import {
+  applySaleMultiplier,
+  attractionChanceForFish,
+  buyOrEquipItem,
+  consumeBaitUse,
+  createCaughtFish,
+  fishValue,
+  getShopItems,
+  randomFishWeight,
+  recordCatch,
+} from '../src/systems/economy';
 import { defaultSave, normalizeSave, SAVE_KEY, SaveStore } from '../src/systems/save';
 
 describe('fish economy', () => {
-  it('generates weights inside species ranges', () => {
+  it('generates gaussian weights inside species bounds', () => {
     for (const species of fishSpecies) {
       const weights = [0, 0.2, 0.55, 0.91, 0.999].map((roll) => randomFishWeight(species, () => roll));
       for (const weight of weights) {
-        expect(weight).toBeGreaterThanOrEqual(species.weightRangeLb[0]);
-        expect(weight).toBeLessThanOrEqual(species.weightRangeLb[1]);
+        expect(weight).toBeGreaterThanOrEqual(species.minimumWeightLb);
+        expect(weight).toBeLessThanOrEqual(species.trophyWeightLb);
       }
+    }
+  });
+
+  it('uses configured average weight as the gaussian center', () => {
+    for (const species of fishSpecies) {
+      const rolls = [0.5, 0.25];
+      expect(randomFishWeight(species, () => rolls.shift() ?? 0.5)).toBe(species.averageWeightLb);
     }
   });
 
@@ -52,6 +70,18 @@ describe('fish economy', () => {
     expect(applySaleMultiplier(caught, 1.4).value).toBe(Math.round(caught.value * 1.4));
   });
 
+  it('uses bait and lure tags to gate fish attraction', () => {
+    const pike = fishSpecies.find((fish) => fish.id === 'northern-pike')!;
+    const catfish = fishSpecies.find((fish) => fish.id === 'channel-catfish')!;
+    const crank = lureById.get('minnow-crank')!;
+    const stinkBait = baitById.get('stink-bait')!;
+
+    expect(attractionChanceForFish(pike, crank, 'lure')).toBeGreaterThan(0);
+    expect(attractionChanceForFish(pike, stinkBait, 'bait')).toBe(0);
+    expect(attractionChanceForFish(catfish, stinkBait, 'bait')).toBeGreaterThan(0);
+    expect(attractionChanceForFish(catfish, crank, 'lure')).toBe(0);
+  });
+
   it('records sold catches into money and catch log', () => {
     const save = defaultSave();
     const updated = recordCatch(save, {
@@ -77,10 +107,43 @@ describe('shop and save behavior', () => {
     expect(updated.equippedRodId).toBe('bamboo-rod');
   });
 
+  it('buys bait as consumable uses and consumes it on cast', () => {
+    const save = { ...defaultSave(), money: 50 };
+    const stocked = buyOrEquipItem(save, 'bait', 'red-worms');
+
+    expect(stocked.money).toBe(42);
+    expect(stocked.baitInventory['red-worms']).toBe(5);
+    expect(stocked.activeAttractorKind).toBe('bait');
+
+    const consumed = consumeBaitUse({ ...stocked, baitInventory: { 'red-worms': 1 } }, 'red-worms');
+    expect(consumed.baitInventory['red-worms']).toBeUndefined();
+    expect(consumed.activeAttractorKind).toBe('lure');
+  });
+
+  it('can switch from bait back to the equipped lure', () => {
+    const baitSave = buyOrEquipItem({ ...defaultSave(), money: 50 }, 'bait', 'red-worms');
+    const starterLure = getShopItems(baitSave).find((item) => item.id === 'starter-bobber');
+
+    expect(starterLure?.equipped).toBe(false);
+
+    const lureSave = buyOrEquipItem(baitSave, 'lure', 'starter-bobber');
+    expect(lureSave.activeAttractorKind).toBe('lure');
+  });
+
+  it('activates chum as a timed shop purchase', () => {
+    const activated = buyOrEquipItem({ ...defaultSave(), money: 50 }, 'chum', 'panfish-crumbs', 1000);
+
+    expect(activated.money).toBe(32);
+    expect(activated.activeChumId).toBe('panfish-crumbs');
+    expect(activated.chumExpiresAt).toBe(46000);
+    expect(getShopItems(activated, 2000).find((item) => item.id === 'panfish-crumbs')?.active).toBe(true);
+  });
+
   it('normalizes missing save fields with defaults', () => {
     const normalized = normalizeSave({ money: 99, ownedRodIds: ['twig-rod'] });
     expect(normalized.money).toBe(99);
     expect(normalized.equippedLureId).toBe('starter-bobber');
+    expect(normalized.activeAttractorKind).toBe('lure');
     expect(normalized.unlockedLevelIds).toEqual(['lake']);
   });
 

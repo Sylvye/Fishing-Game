@@ -1,22 +1,22 @@
 import type { AssetManifestEntry } from '../types';
-import bluegillUrl from '../assets/placeholders/fish/bluegill.svg?url';
-import channelCatfishUrl from '../assets/placeholders/fish/channel-catfish.svg?url';
-import commonCarpUrl from '../assets/placeholders/fish/common-carp.svg?url';
-import largemouthBassUrl from '../assets/placeholders/fish/largemouth-bass.svg?url';
-import northernPikeUrl from '../assets/placeholders/fish/northern-pike.svg?url';
-import rainbowTroutUrl from '../assets/placeholders/fish/rainbow-trout.svg?url';
-import smallmouthBassUrl from '../assets/placeholders/fish/smallmouth-bass.png?url';
-import walleyeUrl from '../assets/placeholders/fish/walleye.svg?url';
-import boatRowboatUrl from '../assets/placeholders/items/boat-rowboat.svg?url';
-import lureSpoonUrl from '../assets/placeholders/items/lure-spoon.svg?url';
-import rodBambooUrl from '../assets/placeholders/items/rod-bamboo.svg?url';
+import bluegillUrl from '../assets/images/fish/Bluegill.png?url';
+import channelCatfishUrl from '../assets/images/fish/Channel_catfish.png?url';
+import commonCarpUrl from '../assets/images/fish/Common_carp.png?url';
+import largemouthBassUrl from '../assets/images/fish/Largemouth_bass.png?url';
+import northernPikeUrl from '../assets/images/fish/Northern_pike.png?url';
+import rainbowTroutUrl from '../assets/images/fish/Rainbow_trout.png?url';
+import smallmouthBassUrl from '../assets/images/fish/Smallmouth_bass.png?url';
+import walleyeUrl from '../assets/images/fish/Walleye.png?url';
+import boatRowboatUrl from '../assets/images/items/boat-rowboat.svg?url';
+import lureSpoonUrl from '../assets/images/items/lure-spoon.svg?url';
+import rodBambooUrl from '../assets/images/items/rod-bamboo.svg?url';
 
 export const assetManifest: AssetManifestEntry[] = [
   {
     id: 'fish-bluegill',
     kind: 'fish',
     src: bluegillUrl,
-    displayName: 'Bluegill placeholder',
+    displayName: 'Bluegill image',
     license: 'CC0 1.0 / local simplified derivative placeholder',
     attribution: 'Inspired by Wikimedia Commons file "Bluegill sunfish silhouette.svg" by Abyssal, CC0.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Bluegill_sunfish_silhouette.svg',
@@ -26,7 +26,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-largemouth-bass',
     kind: 'fish',
     src: largemouthBassUrl,
-    displayName: 'Largemouth Bass placeholder',
+    displayName: 'Largemouth Bass image',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Denton Largemouth Bass 1896.png", public domain.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Denton_Largemouth_Bass_1896.png',
@@ -36,7 +36,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-smallmouth-bass',
     kind: 'fish',
     src: smallmouthBassUrl,
-    displayName: 'Smallmouth Bass placeholder',
+    displayName: 'Smallmouth Bass image',
     license: 'Public domain, U.S. Fish and Wildlife Service',
     attribution: 'Duane Raver / U.S. Fish and Wildlife Service via Wikimedia Commons.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Smallmouth_bass.png',
@@ -46,7 +46,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-rainbow-trout',
     kind: 'fish',
     src: rainbowTroutUrl,
-    displayName: 'Rainbow Trout placeholder',
+    displayName: 'Rainbow Trout image',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Rainbow Trout.jpg", public domain, U.S. Fish and Wildlife Service.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Rainbow_Trout.jpg',
@@ -56,7 +56,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-channel-catfish',
     kind: 'fish',
     src: channelCatfishUrl,
-    displayName: 'Channel Catfish placeholder',
+    displayName: 'Channel Catfish image',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Ictalurus punctatus.jpg", public domain, U.S. Fish and Wildlife Service.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Ictalurus_punctatus.jpg',
@@ -66,7 +66,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-northern-pike',
     kind: 'fish',
     src: northernPikeUrl,
-    displayName: 'Northern Pike placeholder',
+    displayName: 'Northern Pike image',
     license: 'Public domain inspired local placeholder',
     attribution: 'Reference source: Wikimedia Commons file "Esox lucius1.jpg", public domain.',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Esox_lucius1.jpg',
@@ -76,7 +76,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-walleye',
     kind: 'fish',
     src: walleyeUrl,
-    displayName: 'Walleye placeholder',
+    displayName: 'Walleye image',
     license: 'Local placeholder',
     attribution: 'Local simplified placeholder; replace with licensed real walleye art or photo.',
     replacementNotes: 'Use a transparent side-profile walleye sprite.',
@@ -85,7 +85,7 @@ export const assetManifest: AssetManifestEntry[] = [
     id: 'fish-common-carp',
     kind: 'fish',
     src: commonCarpUrl,
-    displayName: 'Common Carp placeholder',
+    displayName: 'Common Carp image',
     license: 'Local placeholder',
     attribution: 'Local simplified placeholder; replace with licensed real common carp art or photo.',
     replacementNotes: 'Use a deeper-bodied carp sprite with transparent background.',

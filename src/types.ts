@@ -1,4 +1,6 @@
-export type AssetKind = 'fish' | 'rod' | 'boat' | 'lure' | 'ui';
+export type AssetKind = 'fish' | 'rod' | 'boat' | 'lure' | 'bait' | 'chum' | 'ui';
+export type AttractorKind = 'lure' | 'bait';
+export type TargetDepth = 'surface' | 'mid' | 'deep';
 
 export interface AssetManifestEntry {
   id: string;
@@ -20,7 +22,9 @@ export interface FishSpecies {
   rarityMultiplier: number;
   depthRange: [number, number];
   speedRange: [number, number];
-  weightRangeLb: [number, number];
+  minimumWeightLb: number;
+  averageWeightLb: number;
+  trophyWeightLb: number;
   baseValue: number;
   valuePerLb: number;
   attractionTags: string[];
@@ -46,14 +50,38 @@ export interface Rod {
   weightHandling: number;
 }
 
-export interface Lure {
+export interface AttractorProfile {
+  attractionBonus: number;
+  rarityBonus: number;
+  targetDepth: TargetDepth;
+  tags: string[];
+  attractRadius: number;
+  attractChance: number;
+  attractStrength: number;
+}
+
+export interface Lure extends AttractorProfile {
   id: string;
   displayName: string;
   price: number;
-  attractionBonus: number;
-  rarityBonus: number;
-  targetDepth: 'surface' | 'mid' | 'deep';
+}
+
+export interface Bait extends AttractorProfile {
+  id: string;
+  displayName: string;
+  price: number;
+  usesPerPurchase: number;
+}
+
+export interface Chum {
+  id: string;
+  displayName: string;
+  price: number;
+  durationSeconds: number;
+  spawnMultiplier: number;
   tags: string[];
+  targetSpeciesIds: string[];
+  rarityBonus: number;
 }
 
 export interface Boat {
@@ -91,14 +119,19 @@ export interface PlayerSave {
   ownedRodIds: string[];
   ownedLureIds: string[];
   ownedBoatIds: string[];
+  baitInventory: Record<string, number>;
   equippedRodId: string;
   equippedLureId: string;
+  equippedBaitId: string;
   equippedBoatId: string;
+  activeAttractorKind: AttractorKind;
+  activeChumId?: string;
+  chumExpiresAt?: number;
   unlockedLevelIds: string[];
   catchLog: Record<string, { count: number; bestWeightLb: number; totalValue: number }>;
 }
 
-export type ShopItemKind = 'rod' | 'lure' | 'boat';
+export type ShopItemKind = 'rod' | 'lure' | 'bait' | 'boat' | 'chum';
 
 export interface ShopItemView {
   kind: ShopItemKind;
@@ -107,5 +140,7 @@ export interface ShopItemView {
   price: number;
   owned: boolean;
   equipped: boolean;
+  active?: boolean;
+  quantity?: number;
   detail: string;
 }

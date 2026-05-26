@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import './style.css';
 import { BootScene } from './scenes/BootScene';
+import { IndexScene } from './scenes/IndexScene';
 import { LakeScene } from './scenes/LakeScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { ShopScene } from './scenes/ShopScene';
@@ -22,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, PreloadScene, LakeScene, ShopScene],
+  scene: [BootScene, PreloadScene, LakeScene, ShopScene, IndexScene],
 };
 
 new Phaser.Game(config);

@@ -1,14 +1,23 @@
 import Phaser from 'phaser';
-import { boatById, lureById, rodById } from '../data/items';
+import { baitById, boatById, chumById, lureById, rodById } from '../data/items';
 import { lakeLevel } from '../data/levels';
-import { applySaleMultiplier, chooseWeightedFish, createCaughtFish, randomFishWeight, recordCatch } from '../systems/economy';
+import {
+  applySaleMultiplier,
+  attractionChanceForFish,
+  chooseWeightedFish,
+  consumeBaitUse,
+  createCaughtFish,
+  randomFishWeight,
+  recordCatch,
+} from '../systems/economy';
 import { SaveStore } from '../systems/save';
-import type { Boat, FishSpecies, LevelConfig, Lure, PlayerSave, Rod } from '../types';
+import type { AttractorKind, AttractorProfile, Bait, Boat, Chum, FishSpecies, LevelConfig, Lure, PlayerSave, Rod } from '../types';
 
 type HookState = 'idle' | 'charging' | 'cast' | 'sinking' | 'reeling';
 
 const maxActiveFish = 34;
 const initialVisibleFishTarget = 24;
+const resetHoldDurationSeconds = 3;
 
 interface SwimmingFish {
   sprite: Phaser.GameObjects.Image;
@@ -17,6 +26,9 @@ interface SwimmingFish {
   speed: number;
   direction: 1 | -1;
   sway: number;
+  escapeVelocityY?: number;
+  attractedUntil?: number;
+  nextAttractionCheckAt?: number;
 }
 
 interface HookedFish {
@@ -25,13 +37,21 @@ interface HookedFish {
   weightLb: number;
 }
 
+interface ActiveAttractor {
+  kind: AttractorKind;
+  item: AttractorProfile & { id: string; displayName: string };
+}
+
 export class LakeScene extends Phaser.Scene {
   private readonly saveStore = new SaveStore();
   private level: LevelConfig = lakeLevel;
   private save!: PlayerSave;
   private rod!: Rod;
   private lure!: Lure;
+  private bait!: Bait;
   private boat!: Boat;
+  private activeChum?: Chum;
+  private castAttractor?: ActiveAttractor;
   private waterTop = 160;
   private waterBottom = 720;
   private playerX = 92;
@@ -43,10 +63,14 @@ export class LakeScene extends Phaser.Scene {
   private hint!: Phaser.GameObjects.Text;
   private chargeBar!: Phaser.GameObjects.Graphics;
   private boatContainer?: Phaser.GameObjects.Container;
+  private boatLabel?: Phaser.GameObjects.Text;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private keyA?: Phaser.Input.Keyboard.Key;
   private keyD?: Phaser.Input.Keyboard.Key;
+  private keyR?: Phaser.Input.Keyboard.Key;
   private catchToast?: Phaser.GameObjects.Container;
+  private boatFacing: 1 | -1 = 1;
+  private resetHoldSeconds = 0;
   private charge = 0;
   private hookX = 92;
   private hookY = 150;
@@ -65,7 +89,9 @@ export class LakeScene extends Phaser.Scene {
     this.save = this.saveStore.reload();
     this.rod = rodById.get(this.save.equippedRodId) ?? rodById.get('twig-rod')!;
     this.lure = lureById.get(this.save.equippedLureId) ?? lureById.get('starter-bobber')!;
+    this.bait = baitById.get(this.save.equippedBaitId) ?? baitById.get('red-worms')!;
     this.boat = boatById.get(this.save.equippedBoatId) ?? boatById.get('dock')!;
+    this.refreshActiveChum();
     this.recalculateLayout();
     this.drawBackground();
     this.createBoat();
@@ -80,13 +106,18 @@ export class LakeScene extends Phaser.Scene {
       this.fish = [];
       this.hookedFish = [];
       this.boatContainer = undefined;
+      this.boatLabel = undefined;
+      this.castAttractor = undefined;
+      this.activeChum = undefined;
     });
   }
 
   update(_time: number, deltaMs: number) {
     const delta = deltaMs / 1000;
+    this.refreshActiveChum();
     this.updateBoat(delta);
-    if (this.time.now >= this.nextSpawnAt && this.fish.length < maxActiveFish) {
+    this.updateResetHold(delta);
+    if (this.time.now >= this.nextSpawnAt && this.fish.length < this.maxFishForCurrentConditions()) {
       this.spawnFish(false);
       this.scheduleSpawn();
     }
@@ -103,13 +134,11 @@ export class LakeScene extends Phaser.Scene {
     this.cursors = this.input.keyboard?.createCursorKeys();
     this.keyA = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.A);
     this.keyD = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+    this.keyR = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.input.keyboard?.on('keydown-SPACE', () => this.handleInputDown());
     this.input.keyboard?.on('keyup-SPACE', () => this.handleInputUp());
     this.input.keyboard?.on('keydown-S', () => this.scene.start('Shop'));
-    this.input.keyboard?.on('keydown-R', () => {
-      this.save = this.saveStore.reset();
-      this.scene.restart();
-    });
+    this.input.keyboard?.on('keydown-I', () => this.scene.start('Index'));
   }
 
   private handleResize() {
@@ -117,6 +146,7 @@ export class LakeScene extends Phaser.Scene {
     this.children.removeAll();
     this.fish = [];
     this.hookedFish = [];
+    this.boatLabel = undefined;
     this.drawBackground();
     this.createBoat();
     this.createHud();
@@ -154,15 +184,44 @@ export class LakeScene extends Phaser.Scene {
   }
 
   private rodTip() {
-    return { x: this.playerX + 58, y: this.playerY - 12 };
+    return { x: this.playerX + 58 * this.boatFacing, y: this.playerY - 12 };
   }
 
   private lureRestPosition() {
     return { x: this.playerX, y: this.playerY + 14 };
   }
 
+  private equippedAttractor(): ActiveAttractor {
+    const baitUses = this.save.baitInventory[this.save.equippedBaitId] ?? 0;
+    if (this.save.activeAttractorKind === 'bait' && baitUses > 0) {
+      return { kind: 'bait', item: this.bait };
+    }
+    return { kind: 'lure', item: this.lure };
+  }
+
+  private currentAttractor(): ActiveAttractor {
+    return this.castAttractor ?? this.equippedAttractor();
+  }
+
+  private refreshActiveChum() {
+    const activeChum = this.save.activeChumId ? chumById.get(this.save.activeChumId) : undefined;
+    const isActive = Boolean(activeChum && (this.save.chumExpiresAt ?? 0) > Date.now());
+    this.activeChum = isActive ? activeChum : undefined;
+    if (this.save.activeChumId && !isActive) {
+      this.save = this.saveStore.set({
+        ...this.save,
+        activeChumId: undefined,
+        chumExpiresAt: undefined,
+      });
+    }
+  }
+
   private maxLineLength() {
     return this.rod.maxCastDistance;
+  }
+
+  private maxFishForCurrentConditions() {
+    return Math.round(maxActiveFish * (this.activeChum?.spawnMultiplier ?? 1));
   }
 
   private drawBackground() {
@@ -226,14 +285,19 @@ export class LakeScene extends Phaser.Scene {
       fontStyle: '700',
       fontFamily: 'Inter, sans-serif',
     });
+    this.boatLabel = label;
     this.boatContainer = this.add.container(this.playerX, this.waterTop - 8, [hull, label]);
+    this.updateBoatFacing();
   }
 
   private updateBoat(delta: number) {
     const movingLeft = this.cursors?.left.isDown || this.keyA?.isDown;
     const movingRight = this.cursors?.right.isDown || this.keyD?.isDown;
     const moveAxis = movingLeft && !movingRight ? -1 : movingRight && !movingLeft ? 1 : 0;
-    if (moveAxis !== 0) {
+    const lineIsOut = this.hookState !== 'idle' && this.hookState !== 'charging';
+    if (!lineIsOut && moveAxis !== 0) {
+      this.boatFacing = moveAxis;
+      this.updateBoatFacing();
       this.playerX = Phaser.Math.Clamp(this.playerX + moveAxis * this.boat.moveSpeed * delta, this.leftBoatLimit(), this.rightBoatLimit());
       this.boatContainer?.setPosition(this.playerX, this.waterTop - 8);
     }
@@ -242,6 +306,25 @@ export class LakeScene extends Phaser.Scene {
       this.hookX = rest.x;
       this.hookY = rest.y;
       this.hook?.setPosition(this.hookX, this.hookY);
+    }
+  }
+
+  private updateBoatFacing() {
+    this.boatContainer?.setScale(this.boatFacing, 1);
+    this.boatLabel?.setScale(this.boatFacing, 1);
+  }
+
+  private updateResetHold(delta: number) {
+    if (!this.keyR?.isDown) {
+      this.resetHoldSeconds = 0;
+      return;
+    }
+
+    this.resetHoldSeconds = Math.min(resetHoldDurationSeconds, this.resetHoldSeconds + delta);
+    if (this.resetHoldSeconds >= resetHoldDurationSeconds) {
+      this.resetHoldSeconds = 0;
+      this.save = this.saveStore.reset();
+      this.scene.restart();
     }
   }
 
@@ -261,7 +344,7 @@ export class LakeScene extends Phaser.Scene {
       backgroundColor: 'rgba(16, 35, 43, 0.55)',
       padding: { x: 12, y: 8 },
     });
-    this.hint = this.add.text(18, 76, 'Arrow keys move boat. Hold mouse or Space to cast and reel. S opens shop. R resets save.', {
+    this.hint = this.add.text(18, 76, 'Arrow keys or A/D move boat. Hold mouse or Space to cast and reel. S shop. I index. Hold R to reset save.', {
       color: '#d6ebe6',
       fontSize: '14px',
       fontFamily: 'Inter, sans-serif',
@@ -279,9 +362,13 @@ export class LakeScene extends Phaser.Scene {
   private castHook() {
     const power = Phaser.Math.Clamp(this.charge, 0.12, 1);
     const rest = this.lureRestPosition();
+    this.castAttractor = this.equippedAttractor();
+    if (this.castAttractor.kind === 'bait') {
+      this.save = this.saveStore.set(consumeBaitUse(this.save, this.castAttractor.item.id));
+    }
     this.hookX = rest.x;
     this.hookY = rest.y;
-    this.hookVelocityX = (260 + this.maxLineLength() * 1.05) * power;
+    this.hookVelocityX = (260 + this.maxLineLength() * 1.05) * power * this.boatFacing;
     this.hookVelocityY = -210 * power - 42;
     this.hookState = 'cast';
   }
@@ -340,10 +427,11 @@ export class LakeScene extends Phaser.Scene {
   }
 
   private sinkSpeed() {
-    if (this.lure.targetDepth === 'deep') {
+    const attractor = this.currentAttractor().item;
+    if (attractor.targetDepth === 'deep') {
       return 170;
     }
-    if (this.lure.targetDepth === 'mid') {
+    if (attractor.targetDepth === 'mid') {
       return 130;
     }
     return 96;
@@ -398,16 +486,44 @@ export class LakeScene extends Phaser.Scene {
     this.hookVelocityY = 0;
     this.hookX = rest.x;
     this.hookY = rest.y;
+    this.castAttractor = undefined;
     this.hook.setPosition(this.hookX, this.hookY);
   }
 
   private snapLine() {
     const lostCount = this.hookedFish.length;
     const lostWeight = this.totalHookedWeight();
-    this.hookedFish.forEach((fish) => fish.sprite.destroy());
+    this.releaseHookedFish();
     this.hookedFish = [];
     this.showToast('Line snapped', `Lost ${lostCount} fish at ${lostWeight.toFixed(2)} lb. Upgrade rods to handle more weight.`);
     this.resetHookToBoat();
+  }
+
+  private releaseHookedFish() {
+    this.hookedFish.forEach((fish, index) => {
+      const horizontalDistance = fish.sprite.x - this.hookX;
+      const randomSide: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+      const direction: 1 | -1 = Math.abs(horizontalDistance) > 6 ? (horizontalDistance > 0 ? 1 : -1) : randomSide;
+      const yOffset = Phaser.Math.Between(-34, 34) + (index - (this.hookedFish.length - 1) / 2) * 14;
+
+      fish.sprite.setPosition(
+        this.hookX + direction * Phaser.Math.Between(18, 42),
+        Phaser.Math.Clamp(this.hookY + yOffset, this.waterTop + 28, this.waterBottom - 38),
+      );
+      fish.sprite.setFlipX(direction === 1);
+      fish.sprite.setAlpha(0.92);
+      fish.sprite.setDepth(2);
+
+      this.fish.push({
+        sprite: fish.sprite,
+        species: fish.species,
+        weightLb: fish.weightLb,
+        direction,
+        speed: Phaser.Math.FloatBetween(fish.species.speedRange[1] * 1.2, fish.species.speedRange[1] * 1.65),
+        sway: Phaser.Math.FloatBetween(0, Math.PI * 2),
+        escapeVelocityY: Phaser.Math.Between(-70, 70),
+      });
+    });
   }
 
   private landHookedFish() {
@@ -438,13 +554,14 @@ export class LakeScene extends Phaser.Scene {
   }
 
   private spawnFish(startOnScreen: boolean) {
-    const openSlots = maxActiveFish - this.fish.length;
+    const openSlots = this.maxFishForCurrentConditions() - this.fish.length;
     if (openSlots <= 0) {
       return;
     }
 
     const depth = Phaser.Math.FloatBetween(0.16, 0.98);
-    const species = chooseWeightedFish(this.level.fishPool, depth, this.lure.tags, this.lure.rarityBonus);
+    const attractor = this.currentAttractor();
+    const species = chooseWeightedFish(this.level.fishPool, depth, attractor.item, attractor.kind, this.activeChum);
     const direction: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
     const groupSize = Math.min(this.groupSizeFor(species), openSlots);
     const baseX = startOnScreen
@@ -476,8 +593,8 @@ export class LakeScene extends Phaser.Scene {
 
   private addSwimmingFish(species: FishSpecies, direction: 1 | -1, x: number, y: number) {
     const weightLb = randomFishWeight(species);
-    const [minWeight, maxWeight] = species.weightRangeLb;
-    const weightRatio = Phaser.Math.Clamp((weightLb - minWeight) / (maxWeight - minWeight), 0, 1);
+    const attractor = this.currentAttractor();
+    const weightRatio = Phaser.Math.Clamp((weightLb - species.minimumWeightLb) / (species.trophyWeightLb - species.minimumWeightLb), 0, 1);
     const sizeMultiplier = 0.74 + Math.sqrt(weightRatio) * 0.74;
     const sprite = this.add.image(x, y, species.assetId);
     sprite.setOrigin(0.5);
@@ -489,7 +606,7 @@ export class LakeScene extends Phaser.Scene {
       species,
       weightLb,
       direction,
-      speed: Phaser.Math.FloatBetween(species.speedRange[0], species.speedRange[1]) * this.lure.attractionBonus * Phaser.Math.FloatBetween(0.92, 1.08),
+      speed: Phaser.Math.FloatBetween(species.speedRange[0], species.speedRange[1]) * attractor.item.attractionBonus * Phaser.Math.FloatBetween(0.92, 1.08),
       sway: Phaser.Math.FloatBetween(0, Math.PI * 2),
     });
   }
@@ -497,8 +614,20 @@ export class LakeScene extends Phaser.Scene {
   private updateFish(delta: number) {
     const width = this.scale.width;
     for (const swimmer of this.fish) {
+      this.updateFishAttraction(swimmer, delta);
       swimmer.sprite.x += swimmer.direction * swimmer.speed * delta;
-      swimmer.sprite.y += Math.sin(this.time.now * 0.002 + swimmer.sway) * 0.22;
+      const escapeVelocityY = swimmer.escapeVelocityY ?? 0;
+      swimmer.sprite.y = Phaser.Math.Clamp(
+        swimmer.sprite.y + escapeVelocityY * delta + Math.sin(this.time.now * 0.002 + swimmer.sway) * 0.22,
+        this.waterTop + 28,
+        this.waterBottom - 38,
+      );
+      if (swimmer.escapeVelocityY !== undefined) {
+        swimmer.escapeVelocityY = Phaser.Math.Linear(swimmer.escapeVelocityY, 0, Math.min(1, delta * 1.8));
+        if (Math.abs(swimmer.escapeVelocityY) < 2) {
+          swimmer.escapeVelocityY = undefined;
+        }
+      }
     }
     this.fish = this.fish.filter((swimmer) => {
       const visible = swimmer.sprite.x > -140 && swimmer.sprite.x < width + 140;
@@ -509,11 +638,42 @@ export class LakeScene extends Phaser.Scene {
     });
   }
 
+  private updateFishAttraction(swimmer: SwimmingFish, delta: number) {
+    if (!this.castAttractor || this.hookY < this.waterTop) {
+      return;
+    }
+
+    const attractor = this.castAttractor.item;
+    const distance = Phaser.Math.Distance.Between(this.hookX, this.hookY, swimmer.sprite.x, swimmer.sprite.y);
+    if (distance > attractor.attractRadius) {
+      return;
+    }
+
+    if ((swimmer.nextAttractionCheckAt ?? 0) <= this.time.now) {
+      swimmer.nextAttractionCheckAt = this.time.now + Phaser.Math.Between(420, 820);
+      const chance = attractionChanceForFish(swimmer.species, attractor, this.castAttractor.kind);
+      if (Math.random() < chance) {
+        swimmer.attractedUntil = this.time.now + Phaser.Math.Between(850, 1500);
+      }
+    }
+
+    if ((swimmer.attractedUntil ?? 0) <= this.time.now) {
+      return;
+    }
+
+    const angle = Phaser.Math.Angle.Between(swimmer.sprite.x, swimmer.sprite.y, this.hookX, this.hookY);
+    const pull = attractor.attractStrength * delta;
+    swimmer.sprite.x += Math.cos(angle) * pull;
+    swimmer.sprite.y += Math.sin(angle) * pull * 0.65;
+    swimmer.direction = Math.cos(angle) >= 0 ? 1 : -1;
+    swimmer.sprite.setFlipX(swimmer.direction === 1);
+  }
+
   private checkCatch() {
     if (this.hookState === 'idle' || this.hookState === 'charging' || this.hookY < this.waterTop) {
       return;
     }
-    const radius = 27 + this.lure.attractionBonus * 5;
+    const radius = 27 + this.currentAttractor().item.attractionBonus * 5;
     const caught = this.fish.find((swimmer) => Phaser.Math.Distance.Between(this.hookX, this.hookY, swimmer.sprite.x, swimmer.sprite.y) < radius);
     if (!caught) {
       return;
@@ -574,8 +734,8 @@ export class LakeScene extends Phaser.Scene {
     this.line.strokePath();
     this.line.lineStyle(4, 0x4a2f20, 1);
     this.line.beginPath();
-    this.line.moveTo(this.playerX + 18, this.playerY - 16);
-    this.line.lineTo(this.playerX + 80, this.playerY - 46);
+    this.line.moveTo(this.playerX + 18 * this.boatFacing, this.playerY - 16);
+    this.line.lineTo(this.playerX + 80 * this.boatFacing, this.playerY - 46);
     this.line.strokePath();
   }
 
@@ -593,23 +753,30 @@ export class LakeScene extends Phaser.Scene {
   private updateHud() {
     const catches = Object.values(this.save.catchLog).reduce((sum, entry) => sum + entry.count, 0);
     const lineLoad = this.totalHookedWeight();
+    const attractor = this.currentAttractor();
+    const baitUses = attractor.kind === 'bait' ? this.save.baitInventory[attractor.item.id] ?? 0 : 0;
+    const tackleText = attractor.kind === 'bait' ? `${attractor.item.displayName} (${baitUses})` : attractor.item.displayName;
     const lineText = lineLoad > 0 ? `  |  Line ${lineLoad.toFixed(2)}/${this.rod.weightHandling} lb` : '';
+    const chumText = this.activeChum ? `  |  ${this.activeChum.displayName} ${Math.max(0, Math.ceil(((this.save.chumExpiresAt ?? 0) - Date.now()) / 1000))}s` : '';
     this.hud.setText(
-      `$${this.save.money}  |  ${this.rod.displayName}  |  ${this.lure.displayName}  |  ${this.boat.displayName}  |  Catches ${catches}${lineText}`,
+      `$${this.save.money}  |  ${this.rod.displayName}  |  ${tackleText}  |  ${this.boat.displayName}  |  Catches ${catches}${lineText}${chumText}`,
     );
-    if (this.hookState === 'idle') {
-      this.hint.setText('Arrow keys move boat. Hold mouse or Space to charge cast. S opens shop. R resets save.');
+    if (this.resetHoldSeconds > 0) {
+      this.hint.setText(`Keep holding R to reset save: ${(resetHoldDurationSeconds - this.resetHoldSeconds).toFixed(1)}s`);
+    } else if (this.hookState === 'idle') {
+      this.hint.setText('Arrow keys or A/D move boat. Hold mouse or Space to charge cast. S shop. I index. Hold R to reset save.');
     } else if (this.hookState === 'charging') {
       this.hint.setText('Release to cast.');
     } else if (this.hookedFish.length > 0) {
       this.hint.setText('Hold to reel hooked fish all the way in. Too much weight snaps the line.');
     } else {
-      this.hint.setText('Hold mouse or Space to reel. Release to let the lure sink.');
+      this.hint.setText('Hold mouse or Space to reel. Release to let the tackle sink. Boat movement is locked while cast.');
     }
   }
 
   private scheduleSpawn(delay?: number) {
     const [min, max] = this.level.spawnIntervalMs;
-    this.nextSpawnAt = this.time.now + (delay ?? Phaser.Math.Between(min, max));
+    const spawnMultiplier = this.activeChum?.spawnMultiplier ?? 1;
+    this.nextSpawnAt = this.time.now + (delay ?? Phaser.Math.Between(min, max) / spawnMultiplier);
   }
 }

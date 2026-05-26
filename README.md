@@ -16,15 +16,19 @@ Open `http://localhost:5173/`.
 - Hold mouse or Space to charge a cast.
 - Release to throw the hook.
 - Hold mouse or Space while the hook is in the water to reel in; release to let it sink.
-- Use Left/Right arrow keys or A/D to move the boat.
+- Use Left/Right arrow keys or A/D to move the boat; the boat casts in the direction it last moved.
+- Boat movement is locked while the line is cast out.
 - Fish are hooked when they collide with the hook, then sold only after they are reeled all the way in.
+- Lures are permanent tackle; bait is bought in cheap consumable uses and can be toggled in the shop.
+- Chum can be bought in the shop to temporarily increase and bias fish spawns.
 - Rod upgrades increase line range, reel speed, and maximum line weight before it snaps.
-- Press `S` for the shop.
-- Press `R` to reset the local save.
+- Press `S` to open or close the shop.
+- Press `I` to open or close the fish index.
+- Hold `R` for 3 seconds to reset the local save.
 
 ## Placeholder Assets
 
-Fish and equipment placeholders live in `src/assets/placeholders`. Replace those files and update `src/data/assets.ts` if you need new attribution, license, or notes. One fish sprite is downloaded from Wikimedia Commons to exercise the replaceable web-sourced placeholder path; the rest are simple local placeholders with source/reference notes.
+Fish and equipment images live in `src/assets/images`. Replace those files and update `src/data/assets.ts` if you need new attribution, license, or notes. The asset manifest keeps the image ids stable so game data can keep referencing fish, rods, boats, and lures by id.
 
 ## Verification
 
@@ -43,4 +47,5 @@ Manual smoke test:
 - Player can charge, cast, and reel the hook.
 - Fish swim through the lake and can be caught by hook collision.
 - Catch result increases money and catch count.
-- Shop opens with `S`; owned items can be equipped and purchased items persist after refresh.
+- Shop opens with `S`; owned items can be equipped, bait can be stocked/equipped, chum can be activated, and purchases persist after refresh.
+- Fish index opens with `I` and shows species stats plus catch history.
