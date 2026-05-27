@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { assetManifest } from '../src/data/assets';
 import { fishSpecies } from '../src/data/fish';
+import { levels } from '../src/data/levels';
 import { baitById, lureById } from '../src/data/items';
+import { applyDeveloperCommand } from '../src/systems/devConsole';
 import {
   applySaleMultiplier,
   attractionChanceForFish,
+  buyFerryTicket,
   buyOrEquipItem,
+  canBuyFerryTicket,
   consumeBaitUse,
   createCaughtFish,
   fishValue,
@@ -12,7 +17,7 @@ import {
   randomFishWeight,
   recordCatch,
 } from '../src/systems/economy';
-import { defaultSave, normalizeSave, SAVE_KEY, SaveStore } from '../src/systems/save';
+import { defaultLevelSave, defaultSave, getLevelSave, normalizeSave, SAVE_KEY, SaveStore } from '../src/systems/save';
 
 describe('fish economy', () => {
   it('generates gaussian weights inside species bounds', () => {
@@ -83,7 +88,7 @@ describe('fish economy', () => {
   });
 
   it('records sold catches into money and catch log', () => {
-    const save = defaultSave();
+    const save = defaultLevelSave('river');
     const updated = recordCatch(save, {
       id: 'test',
       speciesId: 'bluegill',
@@ -100,7 +105,7 @@ describe('fish economy', () => {
 
 describe('shop and save behavior', () => {
   it('deducts money when buying and equips the item', () => {
-    const save = { ...defaultSave(), money: 150 };
+    const save = { ...defaultLevelSave('river'), money: 150 };
     const updated = buyOrEquipItem(save, 'rod', 'bamboo-rod');
     expect(updated.money).toBe(30);
     expect(updated.ownedRodIds).toContain('bamboo-rod');
@@ -108,7 +113,7 @@ describe('shop and save behavior', () => {
   });
 
   it('buys bait as consumable uses and consumes it on cast', () => {
-    const save = { ...defaultSave(), money: 50 };
+    const save = { ...defaultLevelSave('river'), money: 50 };
     const stocked = buyOrEquipItem(save, 'bait', 'red-worms');
 
     expect(stocked.money).toBe(42);
@@ -121,30 +126,33 @@ describe('shop and save behavior', () => {
   });
 
   it('can switch from bait back to the equipped lure', () => {
-    const baitSave = buyOrEquipItem({ ...defaultSave(), money: 50 }, 'bait', 'red-worms');
-    const starterLure = getShopItems(baitSave).find((item) => item.id === 'starter-bobber');
+    const levelSave = buyOrEquipItem({ ...defaultLevelSave('river'), money: 50 }, 'bait', 'red-worms');
+    const gameSave = { ...defaultSave(), levels: { river: levelSave } };
+    const starterLure = getShopItems(gameSave).find((item) => item.id === 'starter-bobber');
 
     expect(starterLure?.equipped).toBe(false);
 
-    const lureSave = buyOrEquipItem(baitSave, 'lure', 'starter-bobber');
+    const lureSave = buyOrEquipItem(levelSave, 'lure', 'starter-bobber');
     expect(lureSave.activeAttractorKind).toBe('lure');
   });
 
   it('activates chum as a timed shop purchase', () => {
-    const activated = buyOrEquipItem({ ...defaultSave(), money: 50 }, 'chum', 'panfish-crumbs', 1000);
+    const activated = buyOrEquipItem({ ...defaultLevelSave('river'), money: 50 }, 'chum', 'panfish-crumbs', 1000);
+    const gameSave = { ...defaultSave(), levels: { river: activated } };
 
     expect(activated.money).toBe(32);
     expect(activated.activeChumId).toBe('panfish-crumbs');
     expect(activated.chumExpiresAt).toBe(46000);
-    expect(getShopItems(activated, 2000).find((item) => item.id === 'panfish-crumbs')?.active).toBe(true);
+    expect(getShopItems(gameSave, 2000).find((item) => item.id === 'panfish-crumbs')?.active).toBe(true);
   });
 
   it('normalizes missing save fields with defaults', () => {
     const normalized = normalizeSave({ money: 99, ownedRodIds: ['twig-rod'] });
-    expect(normalized.money).toBe(99);
-    expect(normalized.equippedLureId).toBe('starter-bobber');
-    expect(normalized.activeAttractorKind).toBe('lure');
-    expect(normalized.unlockedLevelIds).toEqual(['lake']);
+    expect(normalized.currentLevelId).toBe('lake');
+    expect(normalized.unlockedLevelIds).toEqual(['river', 'lake']);
+    expect(getLevelSave(normalized, 'lake').money).toBe(99);
+    expect(getLevelSave(normalized, 'lake').equippedLureId).toBe('silver-spoon');
+    expect(getLevelSave(normalized, 'lake').activeAttractorKind).toBe('lure');
   });
 
   it('reloads progress written by another save store', () => {
@@ -157,10 +165,78 @@ describe('shop and save behavior', () => {
     const lakeStore = new SaveStore(storage);
     const shopStore = new SaveStore(storage);
 
-    lakeStore.set({ ...defaultSave(), money: 150 });
+    lakeStore.setCurrentLevelSave({ ...defaultLevelSave('river'), money: 150 });
 
-    expect(JSON.parse(memory.get(SAVE_KEY) ?? '{}').money).toBe(150);
-    expect(shopStore.get().money).toBe(35);
-    expect(shopStore.reload().money).toBe(150);
+    expect(JSON.parse(memory.get(SAVE_KEY) ?? '{}').levels.river.money).toBe(150);
+    expect(getLevelSave(shopStore.get()).money).toBe(35);
+    expect(getLevelSave(shopStore.reload()).money).toBe(150);
+  });
+
+  it('isolates saves when switching levels', () => {
+    const store = new SaveStore(null);
+    store.set({
+      ...defaultSave(),
+      currentLevelId: 'river',
+      unlockedLevelIds: ['river', 'lake'],
+      levels: {
+        river: { ...defaultLevelSave('river'), money: 77 },
+        lake: { ...defaultLevelSave('lake'), money: 22 },
+      },
+    });
+
+    expect(store.getCurrentLevelSave().money).toBe(77);
+    store.setCurrentLevel('lake');
+    expect(store.getCurrentLevelSave().money).toBe(22);
+  });
+
+  it('unlocks the next level with a Ferry Ticket and starts a fresh local save', () => {
+    const river = {
+      ...defaultLevelSave('river'),
+      money: 500,
+      ownedBoatIds: ['dock', 'rowboat'],
+      equippedBoatId: 'rowboat',
+    };
+    const save = { ...defaultSave(), levels: { river } };
+    const riverLevel = levels[0];
+
+    expect(canBuyFerryTicket(save, riverLevel)).toBe(true);
+    const updated = buyFerryTicket(save, riverLevel);
+
+    expect(updated.currentLevelId).toBe('lake');
+    expect(updated.unlockedLevelIds).toEqual(['river', 'lake']);
+    expect(getLevelSave(updated, 'river').money).toBe(50);
+    expect(getLevelSave(updated, 'lake').ownedRodIds).toEqual(['bamboo-rod']);
+  });
+
+  it('applies developer money commands to the current level save', () => {
+    const save = defaultSave();
+    const result = applyDeveloperCommand(save, 'money add 500');
+
+    expect(result.message).toBe('Money set to $535.');
+    expect(getLevelSave(result.save, 'river').money).toBe(535);
+  });
+});
+
+describe('level data', () => {
+  it('defines the requested level order', () => {
+    expect(levels.map((level) => level.id)).toEqual(['river', 'lake', 'estuary', 'coral-reef']);
+  });
+
+  it('defines each required fish pool', () => {
+    expect(levels[0].fishPool).toEqual(['minnow', 'bluegill', 'largemouth-bass', 'smallmouth-bass', 'rainbow-trout', 'salmon', 'sturgeon', 'channel-catfish']);
+    expect(levels[1].fishPool).toEqual(['bluegill', 'largemouth-bass', 'smallmouth-bass', 'crappie', 'northern-pike', 'walleye', 'blue-catfish']);
+    expect(levels[2].fishPool).toEqual(['mullet', 'striped-bass', 'flounder', 'red-drum', 'black-drum', 'tarpon', 'bull-shark', 'sandbar-shark']);
+    expect(levels[3].fishPool).toEqual(['damselfish', 'butterflyfish', 'parrotfish', 'triggerfish', 'lionfish', 'grouper', 'barracuda', 'mahi-mahi', 'blacktip-reef-shark', 'hammerhead-shark']);
+  });
+
+  it('has species and assets for every configured fish id', () => {
+    const speciesIds = new Set(fishSpecies.map((fish) => fish.id));
+    const assetIds = new Set(assetManifest.map((asset) => asset.id));
+    for (const level of levels) {
+      for (const fishId of level.fishPool) {
+        expect(speciesIds.has(fishId)).toBe(true);
+        expect(assetIds.has(`fish-${fishId}`)).toBe(true);
+      }
+    }
   });
 });

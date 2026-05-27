@@ -1,6 +1,6 @@
 # Fishing Game
 
-A Phaser 3 + TypeScript fishing game prototype. The first playable scene is a 2D lake cross-section with casting, reeling, fish collisions, randomized real fish weights, fish sale values, a shop, and local save progression.
+A Phaser 3 + TypeScript fishing game prototype. The core scene is a 2D fishing cross-section with casting, reeling, fish collisions, randomized real fish weights, fish sale values, level-specific shops, and local save progression across River, Lake, Estuary, and Coral Reef locations.
 
 ## Run
 
@@ -22,6 +22,10 @@ Open `http://localhost:5173/`.
 - Lures are permanent tackle; bait is bought in cheap consumable uses and can be toggled in the shop.
 - Chum can be bought in the shop to temporarily increase and bias fish spawns.
 - Rod upgrades increase line range, reel speed, and maximum line weight before it snaps.
+- Each location has its own save, money, tackle, shop, and catch log.
+- Buy the final boat in a location to reveal a Ferry Ticket. Ferry Tickets unlock the next location, but money and tackle stay behind.
+- Press `M` to open the map and revisit unlocked locations.
+- Press `` ` `` to open the developer console. Use `money add X` to add money to the current location.
 - Press `S` to open or close the shop.
 - Press `I` to open or close the fish index.
 - Hold `R` for 3 seconds to reset the local save.
@@ -43,9 +47,11 @@ This project includes a GitHub Actions workflow that deploys `dist/` to GitHub P
 
 Manual smoke test:
 
-- Lake scene loads and fills the browser viewport.
+- Lake scene fills the browser viewport at native resolution while preserving consistent gameplay balance across screen sizes.
 - Player can charge, cast, and reel the hook.
 - Fish swim through the lake and can be caught by hook collision.
+- Opening and closing the shop, map, or fish index preserves active fish and cast state.
 - Catch result increases money and catch count.
-- Shop opens with `S`; owned items can be equipped, bait can be stocked/equipped, chum can be activated, and purchases persist after refresh.
-- Fish index opens with `I` and shows species stats plus catch history.
+- Shop opens with `S`; owned items can be equipped, bait can be stocked/equipped, chum can be activated, level-specific purchases persist after refresh, and Ferry Tickets unlock the next location.
+- Map opens with `M`; locked locations are blacked out and unlocked locations can be revisited with their own saved gear.
+- Fish index opens with `I` and shows species stats plus current-location catch history.

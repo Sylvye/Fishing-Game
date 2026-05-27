@@ -1,6 +1,8 @@
 import { fishById } from '../data/fish';
-import { baitById, boatById, chumById, lureById, rodById } from '../data/items';
-import type { AttractorKind, AttractorProfile, Chum, CaughtFish, FishSpecies, PlayerSave, ShopItemKind, ShopItemView } from '../types';
+import { baitById, boatById, chumById, crabPotById, lureById, rodById, shopCatalogs } from '../data/items';
+import { levelById } from '../data/levels';
+import { defaultLevelSave, getLevelSave } from './save';
+import type { AttractorKind, AttractorProfile, Chum, CaughtFish, FishSpecies, LevelConfig, PlayerLevelSave, PlayerSave, ShopItemKind, ShopItemView } from '../types';
 
 const rarityWeights: Record<FishSpecies['rarity'], number> = {
   common: 1,
@@ -10,6 +12,7 @@ const rarityWeights: Record<FishSpecies['rarity'], number> = {
 };
 
 const saleValueMultiplier = 0.4;
+const present = <T>(value: T | undefined): value is T => Boolean(value);
 
 const gaussianRandom = (random: () => number): number => {
   const u1 = Math.max(random(), Number.EPSILON);
@@ -108,7 +111,7 @@ export const chooseWeightedFish = (
   return pool[0];
 };
 
-export const recordCatch = (save: PlayerSave, caught: CaughtFish): PlayerSave => {
+export const recordCatch = (save: PlayerLevelSave, caught: CaughtFish): PlayerLevelSave => {
   const previous = save.catchLog[caught.speciesId] ?? { count: 0, bestWeightLb: 0, totalValue: 0 };
   return {
     ...save,
@@ -124,7 +127,20 @@ export const recordCatch = (save: PlayerSave, caught: CaughtFish): PlayerSave =>
   };
 };
 
-export const consumeBaitUse = (save: PlayerSave, baitId: string): PlayerSave => {
+export const recordCrabCatch = (save: PlayerLevelSave, value: number, now = Date.now()): PlayerLevelSave => {
+  const previous = save.crabCatchLog ?? { count: 0, totalValue: 0 };
+  return {
+    ...save,
+    money: save.money + value,
+    crabCatchLog: {
+      count: previous.count + 1,
+      totalValue: previous.totalValue + value,
+      lastCatchAt: now,
+    },
+  };
+};
+
+export const consumeBaitUse = (save: PlayerLevelSave, baitId: string): PlayerLevelSave => {
   const currentUses = save.baitInventory[baitId] ?? 0;
   if (currentUses <= 0) {
     return { ...save, activeAttractorKind: 'lure' };
@@ -143,7 +159,7 @@ export const consumeBaitUse = (save: PlayerSave, baitId: string): PlayerSave => 
   };
 };
 
-export const buyOrEquipItem = (save: PlayerSave, kind: ShopItemKind, id: string, now = Date.now()): PlayerSave => {
+export const buyOrEquipItem = (save: PlayerLevelSave, kind: ShopItemKind, id: string, now = Date.now()): PlayerLevelSave => {
   if (kind === 'bait') {
     const bait = baitById.get(id);
     if (!bait) {
@@ -181,6 +197,22 @@ export const buyOrEquipItem = (save: PlayerSave, kind: ShopItemKind, id: string,
     };
   }
 
+  if (kind === 'crab-pot') {
+    const crabPot = crabPotById.get(id);
+    if (!crabPot || save.ownedCrabPotIds.includes(id) || save.money < crabPot.price) {
+      return save;
+    }
+    return {
+      ...save,
+      money: save.money - crabPot.price,
+      ownedCrabPotIds: [...save.ownedCrabPotIds, id],
+    };
+  }
+
+  if (kind === 'ferry-ticket') {
+    return save;
+  }
+
   const config = kind === 'rod' ? rodById.get(id) : kind === 'lure' ? lureById.get(id) : boatById.get(id);
   if (!config) {
     return save;
@@ -204,55 +236,121 @@ export const buyOrEquipItem = (save: PlayerSave, kind: ShopItemKind, id: string,
   };
 };
 
-export const getShopItems = (save: PlayerSave, now = Date.now()): ShopItemView[] => [
-  ...Array.from(rodById.values()).map((rod) => ({
+const catalogIds = (level: LevelConfig, kind: ShopItemKind): string[] => shopCatalogs[level.shopCatalogId][kind] ?? [];
+
+export const canBuyFerryTicket = (save: PlayerSave, level: LevelConfig): boolean => {
+  const nextLevelId = level.nextLevelId;
+  if (!nextLevelId || !level.ferryTicketPrice || !level.finalBoatId || save.unlockedLevelIds.includes(nextLevelId)) {
+    return false;
+  }
+  const levelSave = getLevelSave(save, level.id);
+  return levelSave.ownedBoatIds.includes(level.finalBoatId) && levelSave.money >= level.ferryTicketPrice;
+};
+
+export const buyFerryTicket = (save: PlayerSave, level: LevelConfig): PlayerSave => {
+  const nextLevelId = level.nextLevelId;
+  if (!nextLevelId || !level.ferryTicketPrice || !canBuyFerryTicket(save, level)) {
+    return save;
+  }
+  const currentLevelSave = getLevelSave(save, level.id);
+  return {
+    ...save,
+    currentLevelId: nextLevelId,
+    unlockedLevelIds: [...save.unlockedLevelIds, nextLevelId],
+    levels: {
+      ...save.levels,
+      [level.id]: {
+        ...currentLevelSave,
+        money: currentLevelSave.money - level.ferryTicketPrice,
+      },
+      [nextLevelId]: defaultLevelSave(nextLevelId),
+    },
+  };
+};
+
+export const getShopItems = (save: PlayerSave, now = Date.now()): ShopItemView[] => {
+  const level = levelById.get(save.currentLevelId);
+  if (!level) {
+    return [];
+  }
+  const levelSave = getLevelSave(save, level.id);
+  const itemViews: ShopItemView[] = [
+  ...catalogIds(level, 'rod').map((id) => rodById.get(id)).filter(present).map((rod) => ({
     kind: 'rod' as const,
     id: rod.id,
     displayName: rod.displayName,
     price: rod.price,
-    owned: save.ownedRodIds.includes(rod.id),
-    equipped: save.equippedRodId === rod.id,
+    owned: levelSave.ownedRodIds.includes(rod.id),
+    equipped: levelSave.equippedRodId === rod.id,
     detail: `Line ${rod.maxCastDistance}, reel ${rod.reelSpeed}, handles ${rod.weightHandling} lb`,
   })),
-  ...Array.from(lureById.values()).map((lure) => ({
+  ...catalogIds(level, 'lure').map((id) => lureById.get(id)).filter(present).map((lure) => ({
     kind: 'lure' as const,
     id: lure.id,
     displayName: lure.displayName,
     price: lure.price,
-    owned: save.ownedLureIds.includes(lure.id),
-    equipped: save.activeAttractorKind === 'lure' && save.equippedLureId === lure.id,
+    owned: levelSave.ownedLureIds.includes(lure.id),
+    equipped: levelSave.activeAttractorKind === 'lure' && levelSave.equippedLureId === lure.id,
     detail: `${lure.targetDepth} lure, ${lure.attractRadius}px pull, tags: ${lure.tags.filter((tag) => tag !== 'lure').join(', ')}`,
   })),
-  ...Array.from(baitById.values()).map((bait) => {
-    const quantity = save.baitInventory[bait.id] ?? 0;
+  ...catalogIds(level, 'bait').map((id) => baitById.get(id)).filter(present).map((bait) => {
+    const quantity = levelSave.baitInventory[bait.id] ?? 0;
     return {
       kind: 'bait' as const,
       id: bait.id,
       displayName: bait.displayName,
       price: bait.price,
       owned: quantity > 0,
-      equipped: save.activeAttractorKind === 'bait' && save.equippedBaitId === bait.id && quantity > 0,
+      equipped: levelSave.activeAttractorKind === 'bait' && levelSave.equippedBaitId === bait.id && quantity > 0,
       quantity,
       detail: `${quantity} uses. ${bait.targetDepth} bait, ${bait.attractRadius}px pull, tags: ${bait.tags.filter((tag) => tag !== 'bait').join(', ')}`,
     };
   }),
-  ...Array.from(chumById.values()).map((chum) => ({
+  ...catalogIds(level, 'chum').map((id) => chumById.get(id)).filter(present).map((chum) => ({
     kind: 'chum' as const,
     id: chum.id,
     displayName: chum.displayName,
     price: chum.price,
     owned: false,
     equipped: false,
-    active: save.activeChumId === chum.id && (save.chumExpiresAt ?? 0) > now,
+    active: levelSave.activeChumId === chum.id && (levelSave.chumExpiresAt ?? 0) > now,
     detail: `${chum.durationSeconds}s, spawns x${chum.spawnMultiplier.toFixed(2)}, favors ${chum.targetSpeciesIds.join(', ')}`,
   })),
-  ...Array.from(boatById.values()).map((boat) => ({
+  ...catalogIds(level, 'boat').map((id) => boatById.get(id)).filter(present).map((boat) => ({
     kind: 'boat' as const,
     id: boat.id,
     displayName: boat.displayName,
     price: boat.price,
-    owned: save.ownedBoatIds.includes(boat.id),
-    equipped: save.equippedBoatId === boat.id,
+    owned: levelSave.ownedBoatIds.includes(boat.id),
+    equipped: levelSave.equippedBoatId === boat.id,
     detail: `Boat speed ${boat.moveSpeed}, fish sales +${Math.round((boat.cashMultiplier - 1) * 100)}%`,
   })),
-];
+  ...catalogIds(level, 'crab-pot').map((id) => crabPotById.get(id)).filter(present).map((pot) => ({
+    kind: 'crab-pot' as const,
+    id: pot.id,
+    displayName: pot.displayName,
+    price: pot.price,
+    owned: levelSave.ownedCrabPotIds.includes(pot.id),
+    equipped: levelSave.ownedCrabPotIds.includes(pot.id),
+    detail: `Passive ${level.crabMechanic?.speciesName ?? 'crab'} catches every ${pot.catchIntervalSeconds}s for about $${pot.valuePerCatch}.`,
+  })),
+  ];
+
+  if (level.nextLevelId && level.ferryTicketPrice && level.finalBoatId && !save.unlockedLevelIds.includes(level.nextLevelId)) {
+    itemViews.push({
+      kind: 'ferry-ticket',
+      id: `ferry-${level.id}-${level.nextLevelId}`,
+      displayName: 'Ferry Ticket',
+      price: level.ferryTicketPrice,
+      owned: false,
+      equipped: false,
+      active: levelSave.ownedBoatIds.includes(level.finalBoatId),
+      unlocksLevelId: level.nextLevelId,
+      detail: levelSave.ownedBoatIds.includes(level.finalBoatId)
+        ? 'Unlocks the next location. Money and tackle do not transfer.'
+        : `Requires ${boatById.get(level.finalBoatId)?.displayName ?? 'the final boat'} for this location.`,
+    });
+  }
+
+  return itemViews;
+};

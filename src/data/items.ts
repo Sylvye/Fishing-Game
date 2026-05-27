@@ -1,10 +1,17 @@
-import type { Bait, Boat, Chum, Lure, Rod } from '../types';
+import type { Bait, Boat, Chum, CrabPot, LevelId, Lure, Rod, ShopItemKind } from '../types';
 
 export const rods: Rod[] = [
   { id: 'twig-rod', displayName: 'Twig Rod', price: 0, maxCastDistance: 260, reelSpeed: 95, weightHandling: 6 },
   { id: 'bamboo-rod', displayName: 'Bamboo Rod', price: 120, maxCastDistance: 340, reelSpeed: 120, weightHandling: 12 },
-  { id: 'graphite-rod', displayName: 'Graphite Rod', price: 420, maxCastDistance: 440, reelSpeed: 150, weightHandling: 22 },
-  { id: 'tournament-rod', displayName: 'Tournament Rod', price: 1050, maxCastDistance: 560, reelSpeed: 180, weightHandling: 36 },
+  { id: 'graphite-rod', displayName: 'Graphite Rod', price: 360, maxCastDistance: 440, reelSpeed: 150, weightHandling: 24 },
+  { id: 'carbon-rod', displayName: 'Carbon Rod', price: 820, maxCastDistance: 560, reelSpeed: 180, weightHandling: 36 },
+  { id: 'tournament-rod', displayName: 'Tournament Rod', price: 1600, maxCastDistance: 640, reelSpeed: 210, weightHandling: 48 },
+  { id: 'surf-rod', displayName: 'Surf Rod', price: 220, maxCastDistance: 430, reelSpeed: 132, weightHandling: 32 },
+  { id: 'tarpon-rod', displayName: 'Tarpon Rod', price: 760, maxCastDistance: 560, reelSpeed: 168, weightHandling: 58 },
+  { id: 'shark-rod', displayName: 'Shark Rod', price: 1450, maxCastDistance: 660, reelSpeed: 190, weightHandling: 96 },
+  { id: 'reef-rod', displayName: 'Reef Rod', price: 260, maxCastDistance: 430, reelSpeed: 150, weightHandling: 38 },
+  { id: 'offshore-rod', displayName: 'Offshore Rod', price: 900, maxCastDistance: 620, reelSpeed: 190, weightHandling: 82 },
+  { id: 'bluewater-rod', displayName: 'Bluewater Rod', price: 1800, maxCastDistance: 720, reelSpeed: 220, weightHandling: 130 },
 ];
 
 export const lures: Lure[] = [
@@ -55,6 +62,54 @@ export const lures: Lure[] = [
     attractRadius: 150,
     attractChance: 0.44,
     attractStrength: 96,
+  },
+  {
+    id: 'surf-jig',
+    displayName: 'Surf Jig',
+    price: 120,
+    attractionBonus: 1.16,
+    rarityBonus: 0.08,
+    targetDepth: 'mid',
+    tags: ['lure', 'jig', 'minnow'],
+    attractRadius: 152,
+    attractChance: 0.5,
+    attractStrength: 100,
+  },
+  {
+    id: 'shark-plug',
+    displayName: 'Shark Plug',
+    price: 420,
+    attractionBonus: 1.22,
+    rarityBonus: 0.22,
+    targetDepth: 'deep',
+    tags: ['lure', 'minnow', 'deep', 'shark'],
+    attractRadius: 178,
+    attractChance: 0.44,
+    attractStrength: 118,
+  },
+  {
+    id: 'reef-spinner',
+    displayName: 'Reef Spinner',
+    price: 140,
+    attractionBonus: 1.18,
+    rarityBonus: 0.1,
+    targetDepth: 'mid',
+    tags: ['lure', 'spinner', 'reef'],
+    attractRadius: 160,
+    attractChance: 0.54,
+    attractStrength: 112,
+  },
+  {
+    id: 'bluewater-troll',
+    displayName: 'Bluewater Troll',
+    price: 560,
+    attractionBonus: 1.3,
+    rarityBonus: 0.24,
+    targetDepth: 'deep',
+    tags: ['lure', 'minnow', 'deep', 'offshore'],
+    attractRadius: 190,
+    attractChance: 0.48,
+    attractStrength: 130,
   },
 ];
 
@@ -111,6 +166,45 @@ export const baits: Bait[] = [
     attractChance: 0.42,
     attractStrength: 82,
   },
+  {
+    id: 'cut-bait',
+    displayName: 'Cut Bait',
+    price: 24,
+    usesPerPurchase: 4,
+    attractionBonus: 1.18,
+    rarityBonus: 0.1,
+    targetDepth: 'deep',
+    tags: ['bait', 'scent', 'deep', 'shark'],
+    attractRadius: 168,
+    attractChance: 0.7,
+    attractStrength: 90,
+  },
+  {
+    id: 'shrimp',
+    displayName: 'Shrimp',
+    price: 18,
+    usesPerPurchase: 5,
+    attractionBonus: 1.12,
+    rarityBonus: 0.06,
+    targetDepth: 'mid',
+    tags: ['bait', 'small', 'reef'],
+    attractRadius: 144,
+    attractChance: 0.72,
+    attractStrength: 88,
+  },
+  {
+    id: 'squid-strips',
+    displayName: 'Squid Strips',
+    price: 30,
+    usesPerPurchase: 4,
+    attractionBonus: 1.2,
+    rarityBonus: 0.16,
+    targetDepth: 'deep',
+    tags: ['bait', 'scent', 'deep', 'offshore'],
+    attractRadius: 176,
+    attractChance: 0.68,
+    attractStrength: 96,
+  },
 ];
 
 export const chums: Chum[] = [
@@ -144,16 +238,76 @@ export const chums: Chum[] = [
     targetSpeciesIds: ['channel-catfish', 'common-carp'],
     rarityBonus: 0.02,
   },
+  {
+    id: 'baitfish-slick',
+    displayName: 'Baitfish Slick',
+    price: 38,
+    durationSeconds: 50,
+    spawnMultiplier: 1.5,
+    tags: ['minnow', 'scent'],
+    targetSpeciesIds: ['mullet', 'striped-bass', 'tarpon'],
+    rarityBonus: 0.12,
+  },
+  {
+    id: 'reef-cloud',
+    displayName: 'Reef Cloud',
+    price: 42,
+    durationSeconds: 50,
+    spawnMultiplier: 1.52,
+    tags: ['reef', 'small'],
+    targetSpeciesIds: ['damselfish', 'butterflyfish', 'parrotfish'],
+    rarityBonus: 0.08,
+  },
 ];
 
 export const boats: Boat[] = [
   { id: 'dock', displayName: 'Dock', price: 0, moveSpeed: 115, cashMultiplier: 1 },
   { id: 'rowboat', displayName: 'Rowboat', price: 300, moveSpeed: 180, cashMultiplier: 1.2 },
   { id: 'bass-boat', displayName: 'Bass Boat', price: 900, moveSpeed: 255, cashMultiplier: 1.4 },
+  { id: 'bay-skiff', displayName: 'Bay Skiff', price: 1150, moveSpeed: 270, cashMultiplier: 1.55 },
+  { id: 'reef-runner', displayName: 'Reef Runner', price: 1600, moveSpeed: 295, cashMultiplier: 1.7 },
 ];
+
+export const crabPots: CrabPot[] = [
+  { id: 'starter-crab-pot', displayName: 'Starter Crab Pot', price: 120, catchIntervalSeconds: 24, valuePerCatch: 14 },
+  { id: 'wire-crab-pot', displayName: 'Wire Crab Pot', price: 360, catchIntervalSeconds: 16, valuePerCatch: 22 },
+];
+
+export const shopCatalogs: Record<LevelId, Partial<Record<ShopItemKind, string[]>>> = {
+  river: {
+    rod: ['twig-rod', 'bamboo-rod', 'graphite-rod'],
+    lure: ['starter-bobber', 'silver-spoon', 'minnow-crank'],
+    bait: ['red-worms', 'dough-balls', 'live-minnows'],
+    chum: ['panfish-crumbs', 'minnow-cloud', 'bottom-stink'],
+    boat: ['dock', 'rowboat'],
+  },
+  lake: {
+    rod: ['bamboo-rod', 'graphite-rod', 'carbon-rod', 'tournament-rod'],
+    lure: ['silver-spoon', 'minnow-crank', 'scented-sinker'],
+    bait: ['red-worms', 'dough-balls', 'stink-bait', 'live-minnows'],
+    chum: ['panfish-crumbs', 'minnow-cloud', 'bottom-stink'],
+    boat: ['rowboat', 'bass-boat'],
+  },
+  estuary: {
+    rod: ['surf-rod', 'tarpon-rod', 'shark-rod'],
+    lure: ['surf-jig', 'shark-plug', 'scented-sinker'],
+    bait: ['live-minnows', 'cut-bait', 'shrimp'],
+    chum: ['baitfish-slick', 'bottom-stink'],
+    boat: ['bass-boat', 'bay-skiff'],
+    'crab-pot': ['starter-crab-pot', 'wire-crab-pot'],
+  },
+  'coral-reef': {
+    rod: ['reef-rod', 'offshore-rod', 'bluewater-rod'],
+    lure: ['reef-spinner', 'bluewater-troll', 'shark-plug'],
+    bait: ['shrimp', 'squid-strips', 'cut-bait'],
+    chum: ['reef-cloud', 'baitfish-slick'],
+    boat: ['bay-skiff', 'reef-runner'],
+  },
+};
 
 export const rodById = new Map(rods.map((item) => [item.id, item]));
 export const lureById = new Map(lures.map((item) => [item.id, item]));
 export const baitById = new Map(baits.map((item) => [item.id, item]));
 export const chumById = new Map(chums.map((item) => [item.id, item]));
 export const boatById = new Map(boats.map((item) => [item.id, item]));
+export const crabPotById = new Map(crabPots.map((item) => [item.id, item]));

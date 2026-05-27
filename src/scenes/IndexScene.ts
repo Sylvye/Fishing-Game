@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { fishSpecies } from '../data/fish';
-import { SaveStore } from '../systems/save';
-import type { FishSpecies, PlayerSave } from '../types';
+import { levelById } from '../data/levels';
+import { getLevelSave, SaveStore } from '../systems/save';
+import type { FishSpecies, PlayerLevelSave, PlayerSave } from '../types';
 
 export class IndexScene extends Phaser.Scene {
   private saveStore = new SaveStore();
@@ -16,14 +17,20 @@ export class IndexScene extends Phaser.Scene {
     this.render();
     this.input.keyboard?.once('keydown-ESC', this.exitIndex, this);
     this.input.keyboard?.once('keydown-I', this.exitIndex, this);
+    this.scale.on('resize', this.render, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.render, this);
+    });
   }
 
   private exitIndex() {
-    this.scene.start('Lake');
+    this.scene.resume('Lake');
+    this.scene.stop();
   }
 
   private render() {
     const { width, height } = this.scale;
+    this.children.removeAll();
     this.add.rectangle(0, 0, width, height, 0x10232b).setOrigin(0);
     this.add.rectangle(0, 0, width, 86, 0x285864).setOrigin(0);
     this.add.text(28, 24, 'Fish Index', {
@@ -38,7 +45,9 @@ export class IndexScene extends Phaser.Scene {
       fontFamily: 'Inter, sans-serif',
     });
 
-    const totalCaught = Object.values(this.save.catchLog).reduce((sum, entry) => sum + entry.count, 0);
+    const level = levelById.get(this.save.currentLevelId);
+    const levelSave = getLevelSave(this.save);
+    const totalCaught = Object.values(levelSave.catchLog).reduce((sum, entry) => sum + entry.count, 0);
     this.add.text(width - 250, 30, `Logged ${totalCaught}`, {
       color: '#ffd66b',
       fontSize: '22px',
@@ -61,19 +70,29 @@ export class IndexScene extends Phaser.Scene {
     fishSpecies.forEach((species, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
-      this.renderSpecies(species, 28 + column * (columnWidth + 26), 112 + row * rowHeight, columnWidth);
+      this.renderSpecies(species, 28 + column * (columnWidth + 26), 112 + row * rowHeight, columnWidth, levelSave);
     });
+    if (level) {
+      this.add.text(210, 31, `Level ${level.levelNumber}: ${level.displayName}`, {
+        color: '#d6ebe6',
+        fontSize: '16px',
+        fontFamily: 'Inter, sans-serif',
+      });
+    }
   }
 
-  private renderSpecies(species: FishSpecies, x: number, y: number, width: number) {
-    const log = this.save.catchLog[species.id];
+  private renderSpecies(species: FishSpecies, x: number, y: number, width: number, levelSave: PlayerLevelSave) {
+    const log = levelSave.catchLog[species.id];
     const caught = Boolean(log?.count);
     const fill = caught ? 0x203f47 : 0x1a3038;
     this.add.rectangle(x, y, width, 106, fill, 0.96).setOrigin(0).setStrokeStyle(1, caught ? 0x6fa7a3 : 0x415c62, 0.45);
 
     const image = this.add.image(x + 58, y + 53, species.assetId);
     image.setDisplaySize(88, 46);
-    image.setAlpha(caught ? 0.96 : 0.38);
+    image.setAlpha(caught ? 0.96 : 1);
+    if (!caught) {
+      image.setTintFill(0x000000);
+    }
     image.setFlipX(true);
 
     this.add.text(x + 118, y + 13, species.displayName, {
@@ -105,7 +124,7 @@ export class IndexScene extends Phaser.Scene {
     });
   }
 
-  private indexLine(log: PlayerSave['catchLog'][string] | undefined) {
+  private indexLine(log: PlayerLevelSave['catchLog'][string] | undefined) {
     if (!log) {
       return 'Not caught yet';
     }

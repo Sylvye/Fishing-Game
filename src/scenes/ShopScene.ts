@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
-import { buyOrEquipItem, getShopItems } from '../systems/economy';
-import { SaveStore } from '../systems/save';
+import { buyFerryTicket, buyOrEquipItem, getShopItems } from '../systems/economy';
+import { levelById } from '../data/levels';
+import { getLevelSave, SaveStore } from '../systems/save';
 import type { PlayerSave, ShopItemKind, ShopItemView } from '../types';
 
 export class ShopScene extends Phaser.Scene {
   private saveStore = new SaveStore();
   private save!: PlayerSave;
   private tackleMode: 'lure' | 'bait' = 'lure';
+  private pendingFerryId?: string;
 
   constructor() {
     super('Shop');
@@ -17,10 +19,15 @@ export class ShopScene extends Phaser.Scene {
     this.render();
     this.input.keyboard?.once('keydown-ESC', this.exitShop, this);
     this.input.keyboard?.once('keydown-S', this.exitShop, this);
+    this.scale.on('resize', this.render, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.render, this);
+    });
   }
 
   private exitShop() {
-    this.scene.start('Lake');
+    this.scene.resume('Lake');
+    this.scene.stop();
   }
 
   private render() {
@@ -34,7 +41,14 @@ export class ShopScene extends Phaser.Scene {
       fontStyle: '700',
       fontFamily: 'Inter, sans-serif',
     });
-    this.add.text(width - 210, 30, `$${this.save.money}`, {
+    const level = levelById.get(this.save.currentLevelId);
+    const levelSave = getLevelSave(this.save);
+    this.add.text(28, 58, level ? `Level ${level.levelNumber}: ${level.displayName}` : 'Current location', {
+      color: '#b8d9d5',
+      fontSize: '13px',
+      fontFamily: 'Inter, sans-serif',
+    });
+    this.add.text(width - 210, 30, `$${levelSave.money}`, {
       color: '#ffd66b',
       fontSize: '24px',
       fontStyle: '700',
@@ -48,17 +62,29 @@ export class ShopScene extends Phaser.Scene {
       backgroundColor: '#2b6871',
       padding: { x: 12, y: 7 },
     });
-    back.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.scene.start('Lake'));
+    back.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.exitShop());
 
     const items = getShopItems(this.save);
-    const columns: Array<ShopItemKind | 'tackle'> = ['rod', 'tackle', 'boat', 'chum'];
-    const labels: Record<ShopItemKind | 'tackle', string> = {
+    if (this.pendingFerryId) {
+      this.add.text(28, 88, 'Ferry Ticket warning: money and tackle stay behind. The next location starts with its own starter save.', {
+        color: '#ffd66b',
+        fontSize: '13px',
+        fontStyle: '700',
+        fontFamily: 'Inter, sans-serif',
+        wordWrap: { width: width - 56 },
+      });
+    }
+    const columns: Array<ShopItemKind | 'tackle' | 'extras'> = ['rod', 'tackle', 'boat', 'extras'];
+    const labels: Record<ShopItemKind | 'tackle' | 'extras', string> = {
       rod: 'Rods',
       lure: 'Lures',
       bait: 'Bait',
       tackle: 'Tackle',
       boat: 'Boats',
       chum: 'Chum',
+      'crab-pot': 'Crab Pots',
+      'ferry-ticket': 'Ferry',
+      extras: 'Extras',
     };
     const columnWidth = Math.min(280, (width - 104) / 4);
 
@@ -75,6 +101,12 @@ export class ShopScene extends Phaser.Scene {
         items
           .filter((item) => item.kind === this.tackleMode)
           .forEach((item, index) => this.renderItem(item, x, 158 + index * 112, columnWidth));
+        return;
+      }
+      if (kind === 'extras') {
+        items
+          .filter((item) => item.kind === 'chum' || item.kind === 'crab-pot' || item.kind === 'ferry-ticket')
+          .forEach((item, index) => this.renderItem(item, x, 150 + index * 112, columnWidth));
         return;
       }
       items
@@ -137,7 +169,24 @@ export class ShopScene extends Phaser.Scene {
       if (!canAct) {
         return;
       }
-      this.save = this.saveStore.set(buyOrEquipItem(this.save, item.kind, item.id));
+      if (item.kind === 'ferry-ticket') {
+        const level = levelById.get(this.save.currentLevelId);
+        if (!level) {
+          return;
+        }
+        if (this.pendingFerryId !== item.id) {
+          this.pendingFerryId = item.id;
+          this.render();
+          return;
+        }
+        this.save = this.saveStore.set(buyFerryTicket(this.save, level));
+        this.scene.stop('Lake');
+        this.scene.start('Lake');
+        this.scene.stop();
+        return;
+      }
+      this.saveStore.setCurrentLevelSave(buyOrEquipItem(getLevelSave(this.save), item.kind, item.id));
+      this.save = this.saveStore.get();
       this.render();
     });
   }
@@ -152,16 +201,29 @@ export class ShopScene extends Phaser.Scene {
     if (item.kind === 'chum') {
       return item.active ? 'Active' : `$${item.price}`;
     }
+    if (item.kind === 'crab-pot') {
+      return item.owned ? 'Owned' : `$${item.price}`;
+    }
+    if (item.kind === 'ferry-ticket') {
+      return this.pendingFerryId === item.id ? 'Confirm' : `$${item.price}`;
+    }
     return item.equipped ? 'Equipped' : item.owned ? 'Equip' : `$${item.price}`;
   }
 
   private canAct(item: ShopItemView) {
+    const levelSave = getLevelSave(this.save);
     if (item.kind === 'bait') {
-      return item.owned && !item.equipped ? true : this.save.money >= item.price;
+      return item.owned && !item.equipped ? true : levelSave.money >= item.price;
     }
     if (item.kind === 'chum') {
-      return !item.active && this.save.money >= item.price;
+      return !item.active && levelSave.money >= item.price;
     }
-    return !item.equipped && (item.owned || this.save.money >= item.price);
+    if (item.kind === 'crab-pot') {
+      return !item.owned && levelSave.money >= item.price;
+    }
+    if (item.kind === 'ferry-ticket') {
+      return Boolean(item.active) && levelSave.money >= item.price;
+    }
+    return !item.equipped && (item.owned || levelSave.money >= item.price);
   }
 }

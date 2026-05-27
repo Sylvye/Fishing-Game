@@ -1,6 +1,8 @@
 export type AssetKind = 'fish' | 'rod' | 'boat' | 'lure' | 'bait' | 'chum' | 'ui';
 export type AttractorKind = 'lure' | 'bait';
 export type TargetDepth = 'surface' | 'mid' | 'deep';
+export type LevelId = 'river' | 'lake' | 'estuary' | 'coral-reef';
+export type LevelMechanic = 'swarm' | 'rain' | 'crab' | 'reef-hazards';
 
 export interface AssetManifestEntry {
   id: string;
@@ -84,6 +86,14 @@ export interface Chum {
   rarityBonus: number;
 }
 
+export interface CrabPot {
+  id: string;
+  displayName: string;
+  price: number;
+  catchIntervalSeconds: number;
+  valuePerCatch: number;
+}
+
 export interface Boat {
   id: string;
   displayName: string;
@@ -93,8 +103,15 @@ export interface Boat {
 }
 
 export interface LevelConfig {
-  id: string;
+  id: LevelId;
+  levelNumber: number;
   displayName: string;
+  subtitle: string;
+  shopCatalogId: LevelId;
+  mechanic: LevelMechanic;
+  nextLevelId?: LevelId;
+  ferryTicketPrice?: number;
+  finalBoatId?: string;
   unlockRequirement?: {
     money?: number;
     boatId?: string;
@@ -111,14 +128,40 @@ export interface LevelConfig {
     lakeBed: number;
   };
   spawnIntervalMs: [number, number];
+  swarmEvent?: {
+    intervalMs: [number, number];
+    speciesIds: string[];
+    massiveSchoolSpeciesId?: string;
+    massiveSchoolChance?: number;
+  };
+  rainEvent?: {
+    intervalMs: [number, number];
+    durationMs: number;
+    spawnMultiplier: number;
+    depthBias: number;
+  };
+  crabMechanic?: {
+    speciesName: string;
+  };
+  hazards?: {
+    count: number;
+    snapLoadRatio: number;
+  };
 }
 
 export interface PlayerSave {
-  version: 1;
+  version: 2;
+  currentLevelId: LevelId;
+  unlockedLevelIds: LevelId[];
+  levels: Partial<Record<LevelId, PlayerLevelSave>>;
+}
+
+export interface PlayerLevelSave {
   money: number;
   ownedRodIds: string[];
   ownedLureIds: string[];
   ownedBoatIds: string[];
+  ownedCrabPotIds: string[];
   baitInventory: Record<string, number>;
   equippedRodId: string;
   equippedLureId: string;
@@ -127,11 +170,11 @@ export interface PlayerSave {
   activeAttractorKind: AttractorKind;
   activeChumId?: string;
   chumExpiresAt?: number;
-  unlockedLevelIds: string[];
   catchLog: Record<string, { count: number; bestWeightLb: number; totalValue: number }>;
+  crabCatchLog?: { count: number; totalValue: number; lastCatchAt?: number };
 }
 
-export type ShopItemKind = 'rod' | 'lure' | 'bait' | 'boat' | 'chum';
+export type ShopItemKind = 'rod' | 'lure' | 'bait' | 'boat' | 'chum' | 'crab-pot' | 'ferry-ticket';
 
 export interface ShopItemView {
   kind: ShopItemKind;
@@ -142,5 +185,6 @@ export interface ShopItemView {
   equipped: boolean;
   active?: boolean;
   quantity?: number;
+  unlocksLevelId?: LevelId;
   detail: string;
 }

@@ -8,7 +8,7 @@ export class PreloadScene extends Phaser.Scene {
 
   preload() {
     const { width, height } = this.scale;
-    const label = this.add.text(width / 2, height / 2, 'Loading lake...', {
+    const label = this.add.text(width / 2, height / 2, 'Loading fishing grounds...', {
       color: '#ecf8f4',
       fontFamily: 'Inter, sans-serif',
       fontSize: '22px',
