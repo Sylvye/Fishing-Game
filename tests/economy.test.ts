@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetManifest } from '../src/data/assets';
+import { assetManifest, chooseAssetTextureId, getAssetTextureIds } from '../src/data/assets';
 import { fishSpecies } from '../src/data/fish';
 import { levels } from '../src/data/levels';
 import { baitById, lureById } from '../src/data/items';
@@ -9,6 +9,7 @@ import {
   attractionChanceForFish,
   buyFerryTicket,
   buyOrEquipItem,
+  canLineHoldHookedFish,
   canBuyFerryTicket,
   consumeBaitUse,
   createCaughtFish,
@@ -85,6 +86,31 @@ describe('fish economy', () => {
     expect(attractionChanceForFish(pike, stinkBait, 'bait')).toBe(0);
     expect(attractionChanceForFish(catfish, stinkBait, 'bait')).toBeGreaterThan(0);
     expect(attractionChanceForFish(catfish, crank, 'lure')).toBe(0);
+  });
+
+  it('defines fearsome and stoic behavior tags for predator pressure', () => {
+    const behaviorTagsById = new Map(fishSpecies.map((fish) => [fish.id, fish.behaviorTags]));
+
+    expect(behaviorTagsById.get('northern-pike')).toContain('fearsome');
+    expect(behaviorTagsById.get('bull-shark')).toContain('fearsome');
+    expect(behaviorTagsById.get('sandbar-shark')).toContain('fearsome');
+    expect(behaviorTagsById.get('blacktip-reef-shark')).toContain('fearsome');
+    expect(behaviorTagsById.get('hammerhead-shark')).toContain('fearsome');
+    expect(behaviorTagsById.get('great-barracuda')).toContain('fearsome');
+    expect(behaviorTagsById.get('goliath-grouper')).toContain('stoic');
+    expect(behaviorTagsById.get('red-lionfish')).toContain('stoic');
+  });
+
+  it('only high-tier lures can hold one fish over the line limit', () => {
+    const starter = lureById.get('starter-bobber')!;
+    const sharkPlug = lureById.get('shark-plug')!;
+    const bluewater = lureById.get('bluewater-troll')!;
+
+    expect(canLineHoldHookedFish([{ weightLb: 97 }], 96, starter)).toBe(false);
+    expect(canLineHoldHookedFish([{ weightLb: 97 }], 96, sharkPlug)).toBe(true);
+    expect(canLineHoldHookedFish([{ weightLb: 131 }], 130, bluewater)).toBe(true);
+    expect(canLineHoldHookedFish([{ weightLb: 97 }, { weightLb: 1 }], 96, sharkPlug)).toBe(false);
+    expect(canLineHoldHookedFish([{ weightLb: 50 }, { weightLb: 47 }], 96, sharkPlug)).toBe(false);
   });
 
   it('records sold catches into money and catch log', () => {
@@ -223,10 +249,10 @@ describe('level data', () => {
   });
 
   it('defines each required fish pool', () => {
-    expect(levels[0].fishPool).toEqual(['minnow', 'bluegill', 'largemouth-bass', 'smallmouth-bass', 'rainbow-trout', 'salmon', 'sturgeon', 'channel-catfish']);
-    expect(levels[1].fishPool).toEqual(['bluegill', 'largemouth-bass', 'smallmouth-bass', 'crappie', 'northern-pike', 'walleye', 'blue-catfish']);
-    expect(levels[2].fishPool).toEqual(['mullet', 'striped-bass', 'flounder', 'red-drum', 'black-drum', 'tarpon', 'bull-shark', 'sandbar-shark']);
-    expect(levels[3].fishPool).toEqual(['damselfish', 'butterflyfish', 'parrotfish', 'triggerfish', 'lionfish', 'grouper', 'barracuda', 'mahi-mahi', 'blacktip-reef-shark', 'hammerhead-shark']);
+    expect(levels[0].fishPool).toEqual(['minnow', 'bluegill', 'largemouth-bass', 'smallmouth-bass', 'rainbow-trout', 'sockeye-salmon', 'atlantic-sturgeon', 'channel-catfish']);
+    expect(levels[1].fishPool).toEqual(['bluegill', 'largemouth-bass', 'smallmouth-bass', 'black-crappie', 'northern-pike', 'walleye', 'blue-catfish']);
+    expect(levels[2].fishPool).toEqual(['gray-mullet', 'striped-bass', 'yellowtail-flounder', 'red-drum', 'black-drum', 'tarpon', 'bull-shark', 'sandbar-shark']);
+    expect(levels[3].fishPool).toEqual(['damselfish', 'butterflyfish', 'rainbow-parrotfish', 'clown-triggerfish', 'red-lionfish', 'goliath-grouper', 'great-barracuda', 'mahi-mahi', 'blacktip-reef-shark', 'hammerhead-shark']);
   });
 
   it('has species and assets for every configured fish id', () => {
@@ -238,5 +264,12 @@ describe('level data', () => {
         expect(assetIds.has(`fish-${fishId}`)).toBe(true);
       }
     }
+  });
+
+  it('registers reusable random texture variants for folder-backed fish', () => {
+    expect(getAssetTextureIds('fish-damselfish')).toHaveLength(6);
+    expect(getAssetTextureIds('fish-butterflyfish')).toHaveLength(7);
+    expect(chooseAssetTextureId('fish-damselfish', () => 0)).toBe('fish-damselfish');
+    expect(chooseAssetTextureId('fish-damselfish', () => 0.999)).toBe('fish-damselfish-royal-damselfish');
   });
 });

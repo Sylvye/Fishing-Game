@@ -86,6 +86,7 @@ export const lures: Lure[] = [
     attractRadius: 178,
     attractChance: 0.44,
     attractStrength: 118,
+    singleOverweightCatch: true,
   },
   {
     id: 'reef-spinner',
@@ -110,6 +111,7 @@ export const lures: Lure[] = [
     attractRadius: 190,
     attractChance: 0.48,
     attractStrength: 130,
+    singleOverweightCatch: true,
   },
 ];
 
@@ -245,7 +247,7 @@ export const chums: Chum[] = [
     durationSeconds: 50,
     spawnMultiplier: 1.5,
     tags: ['minnow', 'scent'],
-    targetSpeciesIds: ['mullet', 'striped-bass', 'tarpon'],
+    targetSpeciesIds: ['gray-mullet', 'striped-bass', 'tarpon'],
     rarityBonus: 0.12,
   },
   {
@@ -255,7 +257,7 @@ export const chums: Chum[] = [
     durationSeconds: 50,
     spawnMultiplier: 1.52,
     tags: ['reef', 'small'],
-    targetSpeciesIds: ['damselfish', 'butterflyfish', 'parrotfish'],
+    targetSpeciesIds: ['damselfish', 'butterflyfish', 'rainbow-parrotfish'],
     rarityBonus: 0.08,
   },
 ];

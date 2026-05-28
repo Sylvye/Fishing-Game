@@ -2,7 +2,7 @@ import { fishById } from '../data/fish';
 import { baitById, boatById, chumById, crabPotById, lureById, rodById, shopCatalogs } from '../data/items';
 import { levelById } from '../data/levels';
 import { defaultLevelSave, getLevelSave } from './save';
-import type { AttractorKind, AttractorProfile, Chum, CaughtFish, FishSpecies, LevelConfig, PlayerLevelSave, PlayerSave, ShopItemKind, ShopItemView } from '../types';
+import type { AttractorKind, AttractorProfile, Chum, CaughtFish, FishSpecies, LevelConfig, Lure, PlayerLevelSave, PlayerSave, ShopItemKind, ShopItemView } from '../types';
 
 const rarityWeights: Record<FishSpecies['rarity'], number> = {
   common: 1,
@@ -69,6 +69,18 @@ export const attractionChanceForFish = (fish: FishSpecies, attractor: AttractorP
     return 0;
   }
   return Math.min(0.95, attractor.attractChance * (0.35 + score * 0.18));
+};
+
+export const canLineHoldHookedFish = (
+  hookedFish: { weightLb: number }[],
+  weightHandling: number,
+  lure?: Pick<Lure, 'singleOverweightCatch'>,
+): boolean => {
+  const totalWeight = hookedFish.reduce((total, fish) => total + fish.weightLb, 0);
+  if (totalWeight < weightHandling) {
+    return true;
+  }
+  return Boolean(lure?.singleOverweightCatch && hookedFish.length === 1 && hookedFish[0].weightLb > weightHandling);
 };
 
 const chumWeightForFish = (fish: FishSpecies, chum?: Chum): number => {
@@ -291,7 +303,7 @@ export const getShopItems = (save: PlayerSave, now = Date.now()): ShopItemView[]
     price: lure.price,
     owned: levelSave.ownedLureIds.includes(lure.id),
     equipped: levelSave.activeAttractorKind === 'lure' && levelSave.equippedLureId === lure.id,
-    detail: `${lure.targetDepth} lure, ${lure.attractRadius}px pull, tags: ${lure.tags.filter((tag) => tag !== 'lure').join(', ')}`,
+    detail: `${lure.targetDepth} lure, ${lure.attractRadius}px pull, tags: ${lure.tags.filter((tag) => tag !== 'lure').join(', ')}${lure.singleOverweightCatch ? ', one over-limit fish' : ''}`,
   })),
   ...catalogIds(level, 'bait').map((id) => baitById.get(id)).filter(present).map((bait) => {
     const quantity = levelSave.baitInventory[bait.id] ?? 0;

@@ -34,6 +34,8 @@ Open `http://localhost:5173/`.
 
 Fish and equipment images live in `src/assets/images`. Replace those files and update `src/data/assets.ts` if you need new attribution, license, or notes. The asset manifest keeps the image ids stable so game data can keep referencing fish, rods, boats, and lures by id.
 
+Some fish can use multiple spawn images. Add those images under a species folder in `src/assets/images/fish`, then create that manifest entry with `folderFishAsset(...)`. The first sorted image becomes the stable index/default texture, and each spawned fish randomly chooses from the default plus its variant textures through `chooseAssetTextureId(...)`.
+
 ## Verification
 
 ```sh

@@ -17,6 +17,9 @@ export class PreloadScene extends Phaser.Scene {
 
     for (const asset of assetManifest) {
       this.load.image(asset.id, asset.src);
+      for (const variant of asset.variants ?? []) {
+        this.load.image(variant.id, variant.src);
+      }
     }
   }
 

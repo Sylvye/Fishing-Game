@@ -8,11 +8,18 @@ export interface AssetManifestEntry {
   id: string;
   kind: AssetKind;
   src: string;
+  variants?: AssetVariant[];
   displayName: string;
   license: string;
   attribution: string;
   replacementNotes: string;
   sourceUrl?: string;
+}
+
+export interface AssetVariant {
+  id: string;
+  src: string;
+  displayName: string;
 }
 
 export interface FishSpecies {
@@ -30,6 +37,7 @@ export interface FishSpecies {
   baseValue: number;
   valuePerLb: number;
   attractionTags: string[];
+  behaviorTags: string[];
   schoolChance: number;
   schoolSizeRange: [number, number];
 }
@@ -66,6 +74,7 @@ export interface Lure extends AttractorProfile {
   id: string;
   displayName: string;
   price: number;
+  singleOverweightCatch?: boolean;
 }
 
 export interface Bait extends AttractorProfile {

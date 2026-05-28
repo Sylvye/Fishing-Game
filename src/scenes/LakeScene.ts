@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import { chooseAssetTextureId } from '../data/assets';
 import { fishById } from '../data/fish';
 import { baitById, boatById, chumById, crabPotById, lureById, rodById } from '../data/items';
 import { firstLevel, levelById } from '../data/levels';
 import {
   applySaleMultiplier,
   attractionChanceForFish,
+  canLineHoldHookedFish,
   chooseWeightedFish,
   consumeBaitUse,
   createCaughtFish,
@@ -21,6 +23,8 @@ const maxActiveFish = 34;
 const initialVisibleFishTarget = 24;
 const resetHoldDurationSeconds = 3;
 const referenceHeight = 720;
+const fearsomeRepelRadius = 132;
+const fearsomeRepelStrength = 150;
 
 interface SwimmingFish {
   sprite: Phaser.GameObjects.Image;
@@ -42,7 +46,7 @@ interface HookedFish {
 
 interface ActiveAttractor {
   kind: AttractorKind;
-  item: AttractorProfile & { id: string; displayName: string };
+  item: AttractorProfile & { id: string; displayName: string; singleOverweightCatch?: boolean };
 }
 
 interface ReefHazard {
@@ -715,7 +719,7 @@ export class LakeScene extends Phaser.Scene {
   private addSwimmingFish(species: FishSpecies, direction: 1 | -1, x: number, y: number) {
     const weightLb = randomFishWeight(species);
     const attractor = this.currentAttractor();
-    const sprite = this.add.image(x, y, species.assetId);
+    const sprite = this.add.image(x, y, chooseAssetTextureId(species.assetId));
     sprite.setOrigin(0.5);
     this.resizeFishSprite(sprite, species, weightLb);
     sprite.setFlipX(direction === 1);
@@ -769,6 +773,7 @@ export class LakeScene extends Phaser.Scene {
     const width = this.scale.width;
     for (const swimmer of this.fish) {
       this.updateFishAttraction(swimmer, delta);
+      this.updateFearsomeRepulsion(swimmer, delta);
       swimmer.sprite.x += swimmer.direction * swimmer.speed * delta;
       const escapeVelocityY = swimmer.escapeVelocityY ?? 0;
       swimmer.sprite.y = Phaser.Math.Clamp(
@@ -790,6 +795,54 @@ export class LakeScene extends Phaser.Scene {
       }
       return visible;
     });
+  }
+
+  private updateFearsomeRepulsion(swimmer: SwimmingFish, delta: number) {
+    if (swimmer.species.behaviorTags.includes('fearsome') || swimmer.species.behaviorTags.includes('stoic')) {
+      return;
+    }
+
+    const threat = this.nearestFearsomeThreat(swimmer);
+    if (!threat) {
+      return;
+    }
+
+    const angle = Phaser.Math.Angle.Between(threat.x, threat.y, swimmer.sprite.x, swimmer.sprite.y);
+    const distanceFactor = 1 - threat.distance / this.s(fearsomeRepelRadius);
+    const shove = this.s(fearsomeRepelStrength) * Math.max(0.18, distanceFactor) * delta;
+    swimmer.sprite.x += Math.cos(angle) * shove;
+    swimmer.sprite.y = Phaser.Math.Clamp(
+      swimmer.sprite.y + Math.sin(angle) * shove * 0.72,
+      this.waterTop + this.s(28),
+      this.waterBottom - this.s(38),
+    );
+    swimmer.direction = Math.cos(angle) >= 0 ? 1 : -1;
+    swimmer.sprite.setFlipX(swimmer.direction === 1);
+    swimmer.attractedUntil = undefined;
+  }
+
+  private nearestFearsomeThreat(swimmer: SwimmingFish) {
+    const radius = this.s(fearsomeRepelRadius);
+    let nearest: { x: number; y: number; distance: number } | undefined;
+    const consider = (x: number, y: number) => {
+      const distance = Phaser.Math.Distance.Between(swimmer.sprite.x, swimmer.sprite.y, x, y);
+      if (distance > 0 && distance < radius && (!nearest || distance < nearest.distance)) {
+        nearest = { x, y, distance };
+      }
+    };
+
+    for (const fish of this.fish) {
+      if (fish !== swimmer && fish.species.behaviorTags.includes('fearsome')) {
+        consider(fish.sprite.x, fish.sprite.y);
+      }
+    }
+    for (const fish of this.hookedFish) {
+      if (fish.species.behaviorTags.includes('fearsome')) {
+        consider(fish.sprite.x, fish.sprite.y);
+      }
+    }
+
+    return nearest;
   }
 
   private updateFishAttraction(swimmer: SwimmingFish, delta: number) {
@@ -839,13 +892,16 @@ export class LakeScene extends Phaser.Scene {
       weightLb: caught.weightLb,
     });
     const totalWeight = this.totalHookedWeight();
-    if (totalWeight >= this.rod.weightHandling) {
+    const attractor = this.currentAttractor();
+    const overweightLure = attractor.kind === 'lure' ? attractor.item : undefined;
+    if (!canLineHoldHookedFish(this.hookedFish, this.rod.weightHandling, overweightLure)) {
       this.snapLine();
       return;
     }
+    const overLimitText = totalWeight >= this.rod.weightHandling ? ' Over-limit lure holding one fish.' : '';
     this.showToast(
       `Hooked ${caught.species.displayName}`,
-      `${caught.weightLb.toFixed(2)} lb on line. ${totalWeight.toFixed(2)} / ${this.rod.weightHandling} lb limit.`,
+      `${caught.weightLb.toFixed(2)} lb on line. ${totalWeight.toFixed(2)} / ${this.rod.weightHandling} lb limit.${overLimitText}`,
     );
     this.hookState = this.isInputDown ? 'reeling' : 'sinking';
   }
@@ -910,7 +966,10 @@ export class LakeScene extends Phaser.Scene {
     const attractor = this.currentAttractor();
     const baitUses = attractor.kind === 'bait' ? this.save.baitInventory[attractor.item.id] ?? 0 : 0;
     const tackleText = attractor.kind === 'bait' ? `${attractor.item.displayName} (${baitUses})` : attractor.item.displayName;
-    const lineText = lineLoad > 0 ? `  |  Line ${lineLoad.toFixed(2)}/${this.rod.weightHandling} lb` : '';
+    const lineStatus = lineLoad >= this.rod.weightHandling && canLineHoldHookedFish(this.hookedFish, this.rod.weightHandling, attractor.kind === 'lure' ? attractor.item : undefined)
+      ? ' over-limit'
+      : '';
+    const lineText = lineLoad > 0 ? `  |  Line ${lineLoad.toFixed(2)}/${this.rod.weightHandling} lb${lineStatus}` : '';
     const chumText = this.activeChum ? `  |  ${this.activeChum.displayName} ${Math.max(0, Math.ceil(((this.save.chumExpiresAt ?? 0) - Date.now()) / 1000))}s` : '';
     const weatherText = this.isRaining() ? '  |  Rain' : '';
     const crabText = this.save.crabCatchLog?.count ? `  |  Crabs ${this.save.crabCatchLog.count}` : '';
@@ -984,7 +1043,7 @@ export class LakeScene extends Phaser.Scene {
       return;
     }
     this.spawnEventSchool(species, massive ? 18 : 9);
-    this.showToast(massive ? 'Massive salmon run' : 'Fish swarm', `${species.displayName} are moving through the ${this.level.displayName}.`);
+    this.showToast(massive ? 'Massive sockeye run' : 'Fish swarm', `${species.displayName} are moving through the ${this.level.displayName}.`);
   }
 
   private spawnEventSchool(species: FishSpecies, count: number) {
