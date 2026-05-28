@@ -86,7 +86,7 @@ export const lures: Lure[] = [
     attractRadius: 178,
     attractChance: 0.44,
     attractStrength: 118,
-    singleOverweightCatch: true,
+    soloStressMultiplier: 0.5,
   },
   {
     id: 'reef-spinner',
@@ -111,7 +111,7 @@ export const lures: Lure[] = [
     attractRadius: 190,
     attractChance: 0.48,
     attractStrength: 130,
-    singleOverweightCatch: true,
+    soloStressMultiplier: 0.5,
   },
 ];
 

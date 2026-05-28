@@ -71,17 +71,33 @@ export const attractionChanceForFish = (fish: FishSpecies, attractor: AttractorP
   return Math.min(0.95, attractor.attractChance * (0.35 + score * 0.18));
 };
 
-export const canLineHoldHookedFish = (
+const stressSecondsAtRodLimit = 8;
+const extraHookedFishTensionMultiplier = 0.12;
+
+export const totalHookedWeight = (hookedFish: { weightLb: number }[]): number =>
+  hookedFish.reduce((total, fish) => total + fish.weightLb, 0);
+
+export const effectiveLineLoadRatio = (
   hookedFish: { weightLb: number }[],
   weightHandling: number,
-  lure?: Pick<Lure, 'singleOverweightCatch'>,
-): boolean => {
-  const totalWeight = hookedFish.reduce((total, fish) => total + fish.weightLb, 0);
-  if (totalWeight < weightHandling) {
-    return true;
+  lure?: Pick<Lure, 'soloStressMultiplier'>,
+): number => {
+  if (hookedFish.length === 0 || weightHandling <= 0) {
+    return 0;
   }
-  return Boolean(lure?.singleOverweightCatch && hookedFish.length === 1 && hookedFish[0].weightLb > weightHandling);
+
+  const loadRatio = totalHookedWeight(hookedFish) / weightHandling;
+  const multiFishMultiplier = 1 + Math.max(0, hookedFish.length - 1) * extraHookedFishTensionMultiplier;
+  const soloStressMultiplier = hookedFish.length === 1 ? lure?.soloStressMultiplier ?? 1 : 1;
+
+  return loadRatio * multiFishMultiplier * soloStressMultiplier;
 };
+
+export const lineStressGainPerSecond = (
+  hookedFish: { weightLb: number }[],
+  weightHandling: number,
+  lure?: Pick<Lure, 'soloStressMultiplier'>,
+): number => effectiveLineLoadRatio(hookedFish, weightHandling, lure) / stressSecondsAtRodLimit;
 
 const chumWeightForFish = (fish: FishSpecies, chum?: Chum): number => {
   if (!chum) {
@@ -303,7 +319,7 @@ export const getShopItems = (save: PlayerSave, now = Date.now()): ShopItemView[]
     price: lure.price,
     owned: levelSave.ownedLureIds.includes(lure.id),
     equipped: levelSave.activeAttractorKind === 'lure' && levelSave.equippedLureId === lure.id,
-    detail: `${lure.targetDepth} lure, ${lure.attractRadius}px pull, tags: ${lure.tags.filter((tag) => tag !== 'lure').join(', ')}${lure.singleOverweightCatch ? ', one over-limit fish' : ''}`,
+    detail: `${lure.targetDepth} lure, ${lure.attractRadius}px pull, tags: ${lure.tags.filter((tag) => tag !== 'lure').join(', ')}${lure.soloStressMultiplier ? `, solo stress -${Math.round((1 - lure.soloStressMultiplier) * 100)}%` : ''}`,
   })),
   ...catalogIds(level, 'bait').map((id) => baitById.get(id)).filter(present).map((bait) => {
     const quantity = levelSave.baitInventory[bait.id] ?? 0;

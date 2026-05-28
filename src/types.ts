@@ -74,7 +74,7 @@ export interface Lure extends AttractorProfile {
   id: string;
   displayName: string;
   price: number;
-  singleOverweightCatch?: boolean;
+  soloStressMultiplier?: number;
 }
 
 export interface Bait extends AttractorProfile {

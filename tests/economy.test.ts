@@ -9,12 +9,13 @@ import {
   attractionChanceForFish,
   buyFerryTicket,
   buyOrEquipItem,
-  canLineHoldHookedFish,
   canBuyFerryTicket,
   consumeBaitUse,
   createCaughtFish,
+  effectiveLineLoadRatio,
   fishValue,
   getShopItems,
+  lineStressGainPerSecond,
   randomFishWeight,
   recordCatch,
 } from '../src/systems/economy';
@@ -101,16 +102,18 @@ describe('fish economy', () => {
     expect(behaviorTagsById.get('red-lionfish')).toContain('stoic');
   });
 
-  it('only high-tier lures can hold one fish over the line limit', () => {
+  it('calculates line stress from weight, solo lures, and multiple fish', () => {
     const starter = lureById.get('starter-bobber')!;
     const sharkPlug = lureById.get('shark-plug')!;
     const bluewater = lureById.get('bluewater-troll')!;
 
-    expect(canLineHoldHookedFish([{ weightLb: 97 }], 96, starter)).toBe(false);
-    expect(canLineHoldHookedFish([{ weightLb: 97 }], 96, sharkPlug)).toBe(true);
-    expect(canLineHoldHookedFish([{ weightLb: 131 }], 130, bluewater)).toBe(true);
-    expect(canLineHoldHookedFish([{ weightLb: 97 }, { weightLb: 1 }], 96, sharkPlug)).toBe(false);
-    expect(canLineHoldHookedFish([{ weightLb: 50 }, { weightLb: 47 }], 96, sharkPlug)).toBe(false);
+    expect(lineStressGainPerSecond([{ weightLb: 96 }], 96, starter)).toBeCloseTo(0.125);
+    expect(lineStressGainPerSecond([{ weightLb: 96 }], 96, sharkPlug)).toBeCloseTo(0.0625);
+    expect(lineStressGainPerSecond([{ weightLb: 130 }], 130, bluewater)).toBeCloseTo(0.0625);
+    expect(effectiveLineLoadRatio([{ weightLb: 48 }, { weightLb: 48 }], 96, sharkPlug)).toBeCloseTo(1.12);
+    expect(lineStressGainPerSecond([{ weightLb: 48 }, { weightLb: 48 }], 96, sharkPlug)).toBeCloseTo(0.14);
+    expect(effectiveLineLoadRatio([{ weightLb: 97 }], 96, starter)).toBeGreaterThan(1);
+    expect(lineStressGainPerSecond([{ weightLb: 97 }], 96, starter)).toBeCloseTo((97 / 96) / 8);
   });
 
   it('records sold catches into money and catch log', () => {
