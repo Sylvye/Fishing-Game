@@ -1,9 +1,9 @@
 import type { FishSpecies } from '../types';
 
 const minVisualLengthInches = 3;
-const maxVisualLengthInches = 120;
 const minBaseDisplayWidth = 18;
-const maxBaseDisplayWidth = 240;
+const referenceVisualLengthInches = 120;
+const referenceBaseDisplayWidth = 240;
 const minSchoolSeparationRadius = 28;
 const maxSchoolSeparationRadius = 36;
 const minSchoolCohesionStrength = 0.24;
@@ -19,9 +19,12 @@ const weightVisualInfluence = 0.45;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const normalizedVisualLength = (visualLengthInches: number) => {
-  const length = clamp(visualLengthInches, minVisualLengthInches, maxVisualLengthInches);
-  return (Math.sqrt(length) - Math.sqrt(minVisualLengthInches)) / (Math.sqrt(maxVisualLengthInches) - Math.sqrt(minVisualLengthInches));
+  const length = Math.max(minVisualLengthInches, visualLengthInches);
+  return (Math.sqrt(length) - Math.sqrt(minVisualLengthInches)) / (Math.sqrt(referenceVisualLengthInches) - Math.sqrt(minVisualLengthInches));
 };
+
+const cappedNormalizedVisualLength = (visualLengthInches: number) =>
+  clamp(normalizedVisualLength(visualLengthInches), 0, 1);
 
 const normalizedWeightRatio = (species: FishSpecies, weightLb: number) => {
   const weightRange = species.trophyWeightLb - species.minimumWeightLb;
@@ -34,7 +37,7 @@ const normalizedWeightRatio = (species: FishSpecies, weightLb: number) => {
 
 export const fishBaseDisplayWidth = (species: FishSpecies): number => {
   const normalized = normalizedVisualLength(species.visualLengthInches);
-  return minBaseDisplayWidth + normalized * (maxBaseDisplayWidth - minBaseDisplayWidth);
+  return minBaseDisplayWidth + normalized * (referenceBaseDisplayWidth - minBaseDisplayWidth);
 };
 
 export const fishWeightVisualMultiplier = (species: FishSpecies, weightLb: number): number => {
@@ -67,16 +70,16 @@ export const fishDisplaySize = (species: FishSpecies, weightLb: number, textureA
 };
 
 export const fishSchoolSeparationRadius = (species: FishSpecies): number => {
-  const normalized = normalizedVisualLength(species.visualLengthInches);
+  const normalized = cappedNormalizedVisualLength(species.visualLengthInches);
   return maxSchoolSeparationRadius - normalized * (maxSchoolSeparationRadius - minSchoolSeparationRadius);
 };
 
 export const fishSchoolCohesionStrength = (species: FishSpecies): number => {
-  const normalized = normalizedVisualLength(species.visualLengthInches);
+  const normalized = cappedNormalizedVisualLength(species.visualLengthInches);
   return maxSchoolCohesionStrength - normalized * (maxSchoolCohesionStrength - minSchoolCohesionStrength);
 };
 
 export const fishSchoolSeparationStrength = (species: FishSpecies): number => {
-  const normalized = normalizedVisualLength(species.visualLengthInches);
+  const normalized = cappedNormalizedVisualLength(species.visualLengthInches);
   return minSchoolSeparationStrength + normalized * (maxSchoolSeparationStrength - minSchoolSeparationStrength);
 };

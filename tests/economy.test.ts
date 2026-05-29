@@ -62,6 +62,14 @@ describe('fish economy', () => {
     expect(fishDisplayWidth(hammerhead, hammerhead.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(bullShark, bullShark.averageWeightLb));
   });
 
+  it('allows giant fish to exceed the old trophy display cap', () => {
+    const hammerhead = speciesById('hammerhead-shark');
+    const whaleShark = speciesById('whale-shark');
+
+    expect(fishDisplayWidth(whaleShark, whaleShark.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(hammerhead, hammerhead.averageWeightLb) * 1.8);
+    expect(fishDisplayWidth(whaleShark, whaleShark.averageWeightLb)).toBeGreaterThan(420);
+  });
+
   it('scales individual fish moderately by weight', () => {
     const bass = speciesById('largemouth-bass');
     const minimumWidth = fishDisplayWidth(bass, bass.minimumWeightLb);
