@@ -15,6 +15,7 @@ import {
   recordCatch,
 } from '../systems/economy';
 import { getLevelSave, SaveStore } from '../systems/save';
+import type { FishDeveloperCommand } from '../systems/devConsole';
 import type { AttractorKind, AttractorProfile, Bait, Boat, Chum, FishSpecies, LevelConfig, Lure, PlayerLevelSave, PlayerSave, Rod } from '../types';
 
 type HookState = 'idle' | 'charging' | 'cast' | 'sinking' | 'reeling';
@@ -192,6 +193,20 @@ export class LakeScene extends Phaser.Scene {
       this.castAttractor = undefined;
       this.activeChum = undefined;
     });
+  }
+
+  applyFishDeveloperCommand(command: FishDeveloperCommand) {
+    const species = fishById.get(command.speciesId);
+    if (!species) {
+      return `Unknown fish type: ${command.speciesId}.`;
+    }
+
+    const count = command.count ?? this.groupSizeFor(species);
+    if (command.action === 'hook') {
+      return this.hookDeveloperFish(species, count, command.weightLb);
+    }
+
+    return this.spawnDeveloperFish(species, count, command.weightLb);
   }
 
   update(_time: number, deltaMs: number) {
@@ -646,7 +661,8 @@ export class LakeScene extends Phaser.Scene {
 
   private hookedFishPullStrength(fish: HookedFish) {
     const rodLoadRatio = fish.weightLb / Math.max(1, this.rod.weightHandling);
-    return this.s(fish.pullSpeed * rodLoadRatio * hookedFishPullSpeedMultiplier);
+    const strengthMultiplier = fish.species.behaviorTags.includes('strong') ? 2 : 1;
+    return this.s(fish.pullSpeed * rodLoadRatio * hookedFishPullSpeedMultiplier * strengthMultiplier);
   }
 
   private sinkSpeed() {
@@ -822,6 +838,7 @@ export class LakeScene extends Phaser.Scene {
     const baseY = Phaser.Math.Linear(this.waterTop + this.s(30), this.waterBottom - this.s(38), depth);
     const spacing = this.s(Phaser.Math.Between(34, 58));
     const schoolId = groupSize > 1 ? this.nextSchoolId++ : undefined;
+    const textureId = chooseAssetTextureId(species.assetId);
 
     for (let index = 0; index < groupSize; index += 1) {
       const xOffset = startOnScreen
@@ -830,8 +847,82 @@ export class LakeScene extends Phaser.Scene {
           ? -index * spacing
           : index * spacing;
       const yOffset = this.s(Phaser.Math.Between(-18, 18) + index * 3);
-      this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId);
+      this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId, textureId);
     }
+  }
+
+  private spawnDeveloperFish(species: FishSpecies, count: number, requestedWeightLb?: number) {
+    const direction: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+    const baseX = Phaser.Math.Between(Math.round(this.s(120)), Math.max(Math.round(this.s(140)), this.scale.width - Math.round(this.s(120))));
+    const depth = Phaser.Math.FloatBetween(species.depthRange[0], species.depthRange[1]);
+    const baseY = this.waterYForDepthRatio(depth);
+    const spacing = this.s(Phaser.Math.Between(34, 58));
+    const schoolId = count > 1 ? this.nextSchoolId++ : undefined;
+    const textureId = chooseAssetTextureId(species.assetId);
+
+    for (let index = 0; index < count; index += 1) {
+      const centeredIndex = index - (count - 1) / 2;
+      const xOffset = centeredIndex * spacing * -direction;
+      const yOffset = this.s(Phaser.Math.Between(-22, 22));
+      const weightLb = requestedWeightLb ?? randomFishWeight(species);
+      this.addSwimmingFish(
+        species,
+        direction,
+        baseX + xOffset,
+        Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()),
+        schoolId,
+        textureId,
+        weightLb,
+      );
+    }
+
+    this.showToast('Developer spawn', `${count} ${species.displayName} added to the water.`);
+    return `Spawned ${count} ${species.displayName}${requestedWeightLb ? ` at ${requestedWeightLb.toFixed(2)} lb` : ''}.`;
+  }
+
+  private hookDeveloperFish(species: FishSpecies, count: number, requestedWeightLb?: number) {
+    this.moveDeveloperHookIntoWater();
+    const textureId = chooseAssetTextureId(species.assetId);
+
+    for (let index = 0; index < count; index += 1) {
+      const weightLb = requestedWeightLb ?? randomFishWeight(species);
+      const sprite = this.add.image(this.hookX, this.hookY, textureId);
+      sprite.setOrigin(0.5);
+      this.resizeFishSprite(sprite, species, weightLb);
+      sprite.setFlipX(this.boatFacing === 1);
+      sprite.setAlpha(0.88);
+      sprite.setDepth(5);
+      this.hookedFish.push({
+        sprite,
+        species,
+        weightLb,
+        pullSpeed: Phaser.Math.FloatBetween(species.speedRange[0], species.speedRange[1]),
+        pullAngle: Phaser.Math.FloatBetween(0.1 * Math.PI, 0.9 * Math.PI),
+        pullPhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
+        pullTurnSpeed: Phaser.Math.FloatBetween(1.8, 4.2),
+      });
+    }
+
+    this.updateHookedFishVisuals();
+    const totalWeight = this.totalHookedWeight();
+    this.showToast('Developer hook', `${count} ${species.displayName} on line. Total load ${totalWeight.toFixed(2)} lb.`);
+    return `Hooked ${count} ${species.displayName}${requestedWeightLb ? ` at ${requestedWeightLb.toFixed(2)} lb each` : ''}.`;
+  }
+
+  private moveDeveloperHookIntoWater() {
+    if (this.hookState !== 'idle' && this.hookState !== 'charging') {
+      this.keepHookInWater();
+      return;
+    }
+
+    this.isInputDown = false;
+    this.charge = 0;
+    this.hookState = 'sinking';
+    this.hookX = Phaser.Math.Clamp(this.playerX + this.s(48) * this.boatFacing, this.s(28), this.scale.width - this.s(28));
+    this.hookY = this.swimmableTop() + this.s(18);
+    this.hookVelocityX = 0;
+    this.hookVelocityY = this.sinkSpeed() * 0.35;
+    this.hook.setPosition(this.hookX, this.hookY);
   }
 
   private groupSizeFor(species: FishSpecies) {
@@ -842,11 +933,10 @@ export class LakeScene extends Phaser.Scene {
     return Phaser.Math.Between(min, max);
   }
 
-  private addSwimmingFish(species: FishSpecies, direction: 1 | -1, x: number, y: number, schoolId?: number) {
-    const weightLb = randomFishWeight(species);
+  private addSwimmingFish(species: FishSpecies, direction: 1 | -1, x: number, y: number, schoolId?: number, textureId = chooseAssetTextureId(species.assetId), weightLb = randomFishWeight(species)) {
     const attractor = this.currentAttractor();
     const cruiseSpeed = this.s(Phaser.Math.FloatBetween(species.speedRange[0], species.speedRange[1]) * attractor.item.attractionBonus * Phaser.Math.FloatBetween(0.92, 1.08));
-    const sprite = this.add.image(x, y, chooseAssetTextureId(species.assetId));
+    const sprite = this.add.image(x, y, textureId);
     sprite.setOrigin(0.5);
     this.resizeFishSprite(sprite, species, weightLb);
     sprite.setFlipX(direction === 1);
@@ -1389,10 +1479,11 @@ export class LakeScene extends Phaser.Scene {
     const baseX = direction === 1 ? -this.s(110) : this.scale.width + this.s(110);
     const baseY = this.waterYForDepthRatio(Phaser.Math.FloatBetween(species.depthRange[0], species.depthRange[1]));
     const schoolId = total > 1 ? this.nextSchoolId++ : undefined;
+    const textureId = chooseAssetTextureId(species.assetId);
     for (let index = 0; index < total; index += 1) {
       const xOffset = direction === 1 ? -index * this.s(34) : index * this.s(34);
       const yOffset = this.s(Phaser.Math.Between(-28, 28));
-      this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId);
+      this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId, textureId);
     }
   }
 

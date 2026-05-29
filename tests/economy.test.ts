@@ -3,7 +3,7 @@ import { assetManifest, chooseAssetTextureId, getAssetTextureIds } from '../src/
 import { fishSpecies } from '../src/data/fish';
 import { levels } from '../src/data/levels';
 import { baitById, lureById } from '../src/data/items';
-import { applyDeveloperCommand } from '../src/systems/devConsole';
+import { applyDeveloperCommand, parseFishDeveloperCommand } from '../src/systems/devConsole';
 import {
   applySaleMultiplier,
   attractionChanceForFish,
@@ -89,7 +89,7 @@ describe('fish economy', () => {
     expect(attractionChanceForFish(catfish, crank, 'lure')).toBe(0);
   });
 
-  it('defines fearsome and stoic behavior tags for predator pressure', () => {
+  it('defines behavior tags for predator pressure and strong fighters', () => {
     const behaviorTagsById = new Map(fishSpecies.map((fish) => [fish.id, fish.behaviorTags]));
 
     expect(behaviorTagsById.get('northern-pike')).toContain('fearsome');
@@ -100,6 +100,12 @@ describe('fish economy', () => {
     expect(behaviorTagsById.get('great-barracuda')).toContain('fearsome');
     expect(behaviorTagsById.get('goliath-grouper')).toContain('stoic');
     expect(behaviorTagsById.get('red-lionfish')).toContain('stoic');
+    expect(behaviorTagsById.get('bull-shark')).toContain('strong');
+    expect(behaviorTagsById.get('sandbar-shark')).toContain('strong');
+    expect(behaviorTagsById.get('blacktip-reef-shark')).toContain('strong');
+    expect(behaviorTagsById.get('hammerhead-shark')).toContain('strong');
+    expect(behaviorTagsById.get('mahi-mahi')).toContain('strong');
+    expect(behaviorTagsById.get('tarpon')).toContain('strong');
   });
 
   it('calculates line stress from weight, solo lures, and multiple fish', () => {
@@ -243,6 +249,17 @@ describe('shop and save behavior', () => {
 
     expect(result.message).toBe('Money set to $535.');
     expect(getLevelSave(result.save, 'river').money).toBe(535);
+  });
+
+  it('parses developer fish hook and spawn commands', () => {
+    expect(parseFishDeveloperCommand('fish hook largemouth-bass weight=6.5 count=2')).toEqual({
+      kind: 'command',
+      command: { action: 'hook', speciesId: 'largemouth-bass', weightLb: 6.5, count: 2 },
+    });
+    expect(parseFishDeveloperCommand('fish spawn Largemouth Bass')).toEqual({
+      kind: 'command',
+      command: { action: 'spawn', speciesId: 'largemouth-bass', weightLb: undefined, count: undefined },
+    });
   });
 });
 

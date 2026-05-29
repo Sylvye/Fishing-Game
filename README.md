@@ -25,7 +25,7 @@ Open `http://localhost:5173/`.
 - Each location has its own save, money, tackle, shop, and catch log.
 - Buy the final boat in a location to reveal a Ferry Ticket. Ferry Tickets unlock the next location, but money and tackle stay behind.
 - Press `M` to open the map and revisit unlocked locations.
-- Press `` ` `` to open the developer console. Use `money add X` to add money to the current location.
+- Press `` ` `` to open the developer console. Use `money add X`, `fish spawn TYPE [weight=x] [count=x]`, or `fish hook TYPE [weight=x] [count=x]`.
 - Press `S` to open or close the shop.
 - Press `I` to open or close the fish index.
 - Hold `R` for 3 seconds to reset the local save.

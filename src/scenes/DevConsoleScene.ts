@@ -1,12 +1,17 @@
 import Phaser from 'phaser';
 import { levelById } from '../data/levels';
-import { applyDeveloperCommand } from '../systems/devConsole';
+import { applyDeveloperCommand, parseFishDeveloperCommand } from '../systems/devConsole';
 import { getLevelSave, SaveStore } from '../systems/save';
+import type { FishDeveloperCommand } from '../systems/devConsole';
+
+interface FishDeveloperCommandTarget {
+  applyFishDeveloperCommand(command: FishDeveloperCommand): string;
+}
 
 export class DevConsoleScene extends Phaser.Scene {
   private readonly saveStore = new SaveStore();
   private inputText = '';
-  private outputText = 'Type a command. Example: money add 500';
+  private outputText = 'Type a command. Examples: money add 500, fish spawn bluegill';
   private commandLine?: Phaser.GameObjects.Text;
   private outputLine?: Phaser.GameObjects.Text;
   private keyHandler?: (event: KeyboardEvent) => void;
@@ -84,6 +89,21 @@ export class DevConsoleScene extends Phaser.Scene {
   }
 
   private executeCommand() {
+    const fishCommand = parseFishDeveloperCommand(this.inputText);
+    if (fishCommand.kind === 'error') {
+      this.outputText = fishCommand.message;
+      this.inputText = '';
+      this.render();
+      return;
+    }
+    if (fishCommand.kind === 'command') {
+      const lake = this.scene.get('Lake') as Phaser.Scene & Partial<FishDeveloperCommandTarget>;
+      this.outputText = lake.applyFishDeveloperCommand?.(fishCommand.command) ?? 'Lake scene is not ready for fish commands.';
+      this.inputText = '';
+      this.render();
+      return;
+    }
+
     const result = applyDeveloperCommand(this.saveStore.reload(), this.inputText);
     this.saveStore.set(result.save);
     this.outputText = result.message;
