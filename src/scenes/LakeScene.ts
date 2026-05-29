@@ -9,6 +9,7 @@ import {
   chooseWeightedFish,
   consumeBaitUse,
   createCaughtFish,
+  effectiveLineLoadRatio,
   lineStressGainPerSecond,
   randomFishWeight,
   recordCrabCatch,
@@ -17,6 +18,7 @@ import {
 } from '../systems/economy';
 import { fishDebugUidForIndex, formatFishDebugLookup, formatFishDebugSummary, type FishDebugSnapshot } from '../systems/fishDebug';
 import { fishDisplaySize, fishDisplayWidth, fishSchoolCohesionStrength, fishSchoolSeparationRadius, fishSchoolSeparationStrength } from '../systems/fishSizing';
+import { oceanCurrentVelocity } from '../systems/oceanCurrents';
 import { getLevelSave, SaveStore } from '../systems/save';
 import type { FishDeveloperCommand, SceneDeveloperCommand } from '../systems/devConsole';
 import type { AttractorKind, AttractorProfile, Bait, Boat, Chum, FishSpecies, LevelConfig, Lure, PlayerLevelSave, PlayerSave, Rod } from '../types';
@@ -31,7 +33,8 @@ const fearsomeRepelRadius = 132;
 const fearsomeRepelStrength = 150;
 const schoolingNeighborRadius = 128;
 const preferredDepthLeashRatio = 0.12;
-const hookedFishPullSpeedMultiplier = 1.25;
+const hookedFishPullSpeedMultiplier = 2;
+const hookedFishPullVisualCapMultiplier = 1.35;
 const toastScaleStep = 0.045;
 const toastMinimumScale = 0.86;
 const toastOverlap = 18;
@@ -109,6 +112,11 @@ interface ReefHazard {
   graphics: Phaser.GameObjects.Graphics;
 }
 
+interface FeedingFrenzyCenter {
+  xRatio: number;
+  depthRatio: number;
+}
+
 interface ActiveToast {
   id: number;
   container: Phaser.GameObjects.Container;
@@ -168,6 +176,10 @@ export class LakeScene extends Phaser.Scene {
   private rainOverlay?: Phaser.GameObjects.Graphics;
   private nextCrabCatchAt = 0;
   private hazards: ReefHazard[] = [];
+  private nextFeedingFrenzyAt = 0;
+  private feedingFrenzyUntil = 0;
+  private feedingFrenzyCenter?: FeedingFrenzyCenter;
+  private feedingFrenzyMarker?: Phaser.GameObjects.Graphics;
   private nextSchoolId = 1;
 
   constructor() {
@@ -198,6 +210,9 @@ export class LakeScene extends Phaser.Scene {
       this.background = undefined;
       this.rainOverlay = undefined;
       this.hazards = [];
+      this.feedingFrenzyMarker?.destroy();
+      this.feedingFrenzyMarker = undefined;
+      this.feedingFrenzyCenter = undefined;
       this.clearToasts();
       this.boatContainer = undefined;
       this.boatLabel = undefined;
@@ -350,13 +365,16 @@ export class LakeScene extends Phaser.Scene {
     this.clearToasts();
     this.rainOverlay?.destroy();
     this.hazards.forEach((hazard) => hazard.graphics.destroy());
+    this.feedingFrenzyMarker?.destroy();
     this.background = undefined;
     this.boatLabel = undefined;
     this.rainOverlay = undefined;
     this.hazards = [];
+    this.feedingFrenzyMarker = undefined;
     this.drawBackground();
     this.createReefHazards();
     this.drawRainOverlay();
+    this.drawFeedingFrenzyMarker();
     this.createBoat();
     this.createHud();
     this.createHook();
@@ -499,7 +517,8 @@ export class LakeScene extends Phaser.Scene {
 
   private maxFishForCurrentConditions() {
     const rainMultiplier = this.isRaining() ? (this.level.rainEvent?.spawnMultiplier ?? 1) : 1;
-    return Math.round(maxActiveFish * (this.activeChum?.spawnMultiplier ?? 1) * rainMultiplier);
+    const frenzyMultiplier = this.isFeedingFrenzyActive() ? 1.24 : 1;
+    return Math.round(maxActiveFish * (this.activeChum?.spawnMultiplier ?? 1) * rainMultiplier * frenzyMultiplier);
   }
 
   private drawBackground() {
@@ -545,6 +564,40 @@ export class LakeScene extends Phaser.Scene {
       ];
       new Phaser.Curves.Spline(points).draw(graphics, 12);
     }
+
+    this.drawOceanCurrentVisuals(graphics);
+  }
+
+  private drawOceanCurrentVisuals(graphics: Phaser.GameObjects.Graphics) {
+    if (!this.level.oceanCurrents) {
+      return;
+    }
+
+    const width = this.scale.width;
+    const topY = this.waterYForDepthRatio(0.18);
+    const deepY = this.waterYForDepthRatio(0.82);
+    const bandHeight = this.s(42);
+    graphics.fillStyle(0xc7f7ff, 0.08);
+    graphics.fillRect(0, topY - bandHeight / 2, width, bandHeight);
+    graphics.fillStyle(0x7fd4ff, 0.07);
+    graphics.fillRect(0, deepY - bandHeight / 2, width, bandHeight);
+
+    for (let i = 0; i < 12; i += 1) {
+      const x = (i * this.s(118)) % (width + this.s(160));
+      this.drawCurrentChevron(graphics, x, topY + this.s((i % 3 - 1) * 10), -1, 0xcaf6ff, 0.34);
+      this.drawCurrentChevron(graphics, x - this.s(58), deepY + this.s((i % 4 - 1.5) * 11), 1, 0x9edaff, 0.28);
+    }
+  }
+
+  private drawCurrentChevron(graphics: Phaser.GameObjects.Graphics, x: number, y: number, direction: 1 | -1, color: number, alpha: number) {
+    const length = this.s(34);
+    const height = this.s(9);
+    graphics.lineStyle(this.s(2), color, alpha);
+    graphics.beginPath();
+    graphics.moveTo(x - direction * length * 0.5, y - height);
+    graphics.lineTo(x + direction * length * 0.5, y);
+    graphics.lineTo(x - direction * length * 0.5, y + height);
+    graphics.strokePath();
   }
 
   private createBoat() {
@@ -703,6 +756,7 @@ export class LakeScene extends Phaser.Scene {
 
     if (this.hookState !== 'idle' && this.hookState !== 'charging') {
       this.applyHookedFishPull(delta);
+      this.applyOceanCurrentToHook(delta);
       this.keepHookInWater();
       this.enforceLineLength();
     }
@@ -726,10 +780,27 @@ export class LakeScene extends Phaser.Scene {
       pullY += Math.sin(angle) * strength;
     }
 
+    const pullMagnitude = Math.hypot(pullX, pullY);
+    const maxPullSpeed = this.maxHookedFishPullSpeed();
+    if (pullMagnitude > maxPullSpeed) {
+      pullX = (pullX / pullMagnitude) * maxPullSpeed;
+      pullY = (pullY / pullMagnitude) * maxPullSpeed;
+    }
+
     this.hookX += pullX * delta;
     this.hookY += pullY * delta;
     this.hookVelocityX += pullX * delta * 0.35;
     this.hookVelocityY += pullY * delta * 0.35;
+  }
+
+  private applyOceanCurrentToHook(delta: number) {
+    if (!this.level.oceanCurrents || this.hookY < this.waterTop) {
+      return;
+    }
+
+    const current = this.s(oceanCurrentVelocity(this.depthRatioForY(this.hookY), this.level.oceanCurrents));
+    this.hookX += current * delta;
+    this.hookVelocityX += current * delta * 0.24;
   }
 
   private hookedFishPullStrength(fish: HookedFish) {
@@ -737,6 +808,10 @@ export class LakeScene extends Phaser.Scene {
     const strengthMultiplier = fish.species.behaviorTags.includes('strong') ? 2 : 1;
     const soloStressMultiplier = soloStressMultiplierForHookedFish(this.hookedFish, this.activeStressLure());
     return this.s(fish.pullSpeed * rodLoadRatio * hookedFishPullSpeedMultiplier * strengthMultiplier * soloStressMultiplier);
+  }
+
+  private maxHookedFishPullSpeed() {
+    return this.s(this.rod.reelSpeed * hookedFishPullVisualCapMultiplier);
   }
 
   private sinkSpeed() {
@@ -914,6 +989,14 @@ export class LakeScene extends Phaser.Scene {
       return;
     }
 
+    const loadRatio = effectiveLineLoadRatio(this.hookedFish, this.rod.weightHandling, this.activeStressLure());
+    if (loadRatio > 1) {
+      const lostCount = this.hookedFish.length;
+      const lostWeight = this.totalHookedWeight();
+      this.snapLine('Line snapped', `Overloaded rod at the boat. Lost ${lostCount} fish at ${lostWeight.toFixed(2)} lb.`);
+      return;
+    }
+
     const catches = this.hookedFish.map((fish) => applySaleMultiplier(createCaughtFish(fish.species, fish.weightLb), this.boat.cashMultiplier));
     const totalValue = catches.reduce((total, fish) => total + fish.value, 0);
     const totalWeight = catches.reduce((total, fish) => total + fish.weightLb, 0);
@@ -943,10 +1026,11 @@ export class LakeScene extends Phaser.Scene {
       return;
     }
 
+    const frenzyDepth = this.feedingFrenzySpawnDepth();
     const depthBias = this.isRaining() ? (this.level.rainEvent?.depthBias ?? 0) : 0;
-    const depth = Phaser.Math.Clamp(Phaser.Math.FloatBetween(0.16, 0.98) + depthBias, 0.16, 0.98);
+    const depth = frenzyDepth ?? Phaser.Math.Clamp(Phaser.Math.FloatBetween(0.16, 0.98) + depthBias, 0.16, 0.98);
     const attractor = this.currentAttractor();
-    const species = chooseWeightedFish(this.level.fishPool, depth, attractor.item, attractor.kind, this.activeChum);
+    const species = this.chooseFeedingFrenzyPredator() ?? chooseWeightedFish(this.level.fishPool, depth, attractor.item, attractor.kind, this.activeChum);
     const direction: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
     const groupSize = Math.min(this.groupSizeFor(species), openSlots);
     const baseX = startOnScreen
@@ -968,6 +1052,27 @@ export class LakeScene extends Phaser.Scene {
       const yOffset = this.s(Phaser.Math.Between(-18, 18) + index * 3);
       this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId, textureId);
     }
+  }
+
+  private feedingFrenzySpawnDepth() {
+    if (!this.isFeedingFrenzyActive() || !this.feedingFrenzyCenter || !this.level.feedingFrenzyEvent) {
+      return undefined;
+    }
+    if (Math.random() >= this.level.feedingFrenzyEvent.predatorSpawnChance) {
+      return undefined;
+    }
+    return Phaser.Math.Clamp(this.feedingFrenzyCenter.depthRatio + Phaser.Math.FloatBetween(-0.16, 0.22), 0.16, 0.98);
+  }
+
+  private chooseFeedingFrenzyPredator() {
+    if (!this.isFeedingFrenzyActive() || !this.level.feedingFrenzyEvent) {
+      return undefined;
+    }
+    if (Math.random() >= this.level.feedingFrenzyEvent.predatorSpawnChance) {
+      return undefined;
+    }
+    const speciesId = Phaser.Utils.Array.GetRandom(this.level.feedingFrenzyEvent.predatorSpeciesIds);
+    return speciesId ? fishById.get(speciesId) : undefined;
   }
 
   private spawnDeveloperFish(species: FishSpecies, count: number, requestedWeightLb?: number) {
@@ -1140,6 +1245,7 @@ export class LakeScene extends Phaser.Scene {
       this.addDepthSteering(swimmer, steering);
       this.addWanderSteering(swimmer, steering, delta);
       this.addSchoolingSteering(swimmer, steering);
+      this.addFeedingFrenzySteering(swimmer, steering);
       const fearPressure = this.addFearsomeAvoidance(swimmer, steering);
       const isAttracted = fearPressure <= 0 && this.addFishAttraction(swimmer, steering);
       const maxSpeed = swimmer.cruiseSpeed * (fearPressure > 0 ? Phaser.Math.Linear(1.35, 2.45, fearPressure) : isAttracted ? 1.28 : 1.08);
@@ -1152,7 +1258,8 @@ export class LakeScene extends Phaser.Scene {
         swimmer.velocityY = (swimmer.velocityY / speed) * maxSpeed;
       }
 
-      swimmer.sprite.x += swimmer.velocityX * delta;
+      const current = this.s(oceanCurrentVelocity(this.depthRatioForY(swimmer.sprite.y), this.level.oceanCurrents));
+      swimmer.sprite.x += (swimmer.velocityX + current) * delta;
       swimmer.sprite.y += swimmer.velocityY * delta;
       this.keepFishNearPreferredDepth(swimmer);
       this.updateFishFacing(swimmer);
@@ -1251,6 +1358,35 @@ export class LakeScene extends Phaser.Scene {
 
     steering.x += separationX * separationStrength;
     steering.y += separationY * separationStrength * 0.8;
+  }
+
+  private addFeedingFrenzySteering(swimmer: SwimmingFish, steering: { x: number; y: number }) {
+    if (!this.isFeedingFrenzyActive() || !this.feedingFrenzyCenter || !this.level.feedingFrenzyEvent) {
+      return;
+    }
+
+    const center = this.feedingFrenzyPosition();
+    const isBait = swimmer.species.id === this.level.feedingFrenzyEvent.baitSpeciesId;
+    const isPredator = this.level.feedingFrenzyEvent.predatorSpeciesIds.includes(swimmer.species.id);
+    if (!isBait && !isPredator) {
+      return;
+    }
+
+    const distance = Phaser.Math.Distance.Between(swimmer.sprite.x, swimmer.sprite.y, center.x, center.y);
+    const radius = this.s(isBait ? 230 : 360);
+    if (distance > radius) {
+      return;
+    }
+
+    const angle = Phaser.Math.Angle.Between(swimmer.sprite.x, swimmer.sprite.y, center.x, center.y);
+    const pullSpeed = swimmer.cruiseSpeed * (isBait ? 0.72 : 1.12);
+    this.steerTowardVelocity(
+      swimmer,
+      Math.cos(angle) * pullSpeed,
+      Math.sin(angle) * pullSpeed * 0.62,
+      steering,
+      isBait ? 1.8 : 0.95,
+    );
   }
 
   private addFearsomeAvoidance(swimmer: SwimmingFish, steering: { x: number; y: number }) {
@@ -1563,9 +1699,11 @@ export class LakeScene extends Phaser.Scene {
     const lineText = lineLoad > 0 ? `  |  Stress ${Math.round(this.lineStress * 100)}% (${lineLoad.toFixed(2)}/${this.rod.weightHandling} lb)` : '';
     const chumText = this.activeChum ? `  |  ${this.activeChum.displayName} ${Math.max(0, Math.ceil(((this.save.chumExpiresAt ?? 0) - Date.now()) / 1000))}s` : '';
     const weatherText = this.isRaining() ? '  |  Rain' : '';
+    const currentsText = this.level.oceanCurrents ? '  |  Currents' : '';
+    const frenzyText = this.isFeedingFrenzyActive() ? `  |  Feeding Frenzy ${Math.max(0, Math.ceil((this.feedingFrenzyUntil - this.time.now) / 1000))}s` : '';
     const crabText = this.save.crabCatchLog?.count ? `  |  Crabs ${this.save.crabCatchLog.count}` : '';
     this.hud.setText(
-      `Level ${this.level.levelNumber}: ${this.level.displayName}  |  $${this.save.money}  |  ${this.rod.displayName}  |  ${tackleText}  |  ${this.boat.displayName}  |  Catches ${catches}${crabText}${lineText}${chumText}${weatherText}`,
+      `Level ${this.level.levelNumber}: ${this.level.displayName}  |  $${this.save.money}  |  ${this.rod.displayName}  |  ${tackleText}  |  ${this.boat.displayName}  |  Catches ${catches}${crabText}${lineText}${chumText}${weatherText}${currentsText}${frenzyText}`,
     );
     if (this.resetHoldSeconds > 0) {
       this.hint.setText(`Keep holding R to reset save: ${(resetHoldDurationSeconds - this.resetHoldSeconds).toFixed(1)}s`);
@@ -1588,6 +1726,10 @@ export class LakeScene extends Phaser.Scene {
     if (this.level.rainEvent) {
       const [min, max] = this.level.rainEvent.intervalMs;
       this.nextRainAt = this.time.now + Phaser.Math.Between(min, max);
+    }
+    if (this.level.feedingFrenzyEvent) {
+      const [min, max] = this.level.feedingFrenzyEvent.intervalMs;
+      this.nextFeedingFrenzyAt = this.time.now + Phaser.Math.Between(min, max);
     }
     this.scheduleNextCrabCatch();
   }
@@ -1614,10 +1756,24 @@ export class LakeScene extends Phaser.Scene {
         this.nextRainAt = this.time.now + Phaser.Math.Between(min, max);
       }
     }
+
+    if (this.level.feedingFrenzyEvent && this.time.now >= this.nextFeedingFrenzyAt && !this.isFeedingFrenzyActive()) {
+      this.triggerFeedingFrenzy();
+    }
+
+    if (this.feedingFrenzyUntil > 0 && this.time.now >= this.feedingFrenzyUntil) {
+      this.endFeedingFrenzy();
+    }
+
+    this.updateFeedingFrenzyMarker();
   }
 
   private isRaining() {
     return this.rainUntil > this.time.now;
+  }
+
+  private isFeedingFrenzyActive() {
+    return this.feedingFrenzyUntil > this.time.now;
   }
 
   private triggerSwarmEvent() {
@@ -1652,6 +1808,103 @@ export class LakeScene extends Phaser.Scene {
       const xOffset = direction === 1 ? -index * this.s(34) : index * this.s(34);
       const yOffset = this.s(Phaser.Math.Between(-28, 28));
       this.addSwimmingFish(species, direction, baseX + xOffset, Phaser.Math.Clamp(baseY + yOffset, this.swimmableTop(), this.swimmableBottom()), schoolId, textureId);
+    }
+  }
+
+  private triggerFeedingFrenzy() {
+    const config = this.level.feedingFrenzyEvent;
+    if (!config) {
+      return;
+    }
+    const baitSpecies = fishById.get(config.baitSpeciesId);
+    if (!baitSpecies) {
+      return;
+    }
+
+    this.feedingFrenzyCenter = {
+      xRatio: Phaser.Math.FloatBetween(0.28, 0.72),
+      depthRatio: Phaser.Math.FloatBetween(0.22, 0.44),
+    };
+    this.feedingFrenzyUntil = this.time.now + config.durationMs;
+    this.spawnFeedingFrenzyBaitSchool(baitSpecies, config.baitSchoolSize);
+    this.drawFeedingFrenzyMarker();
+    this.showToast('Feeding frenzy', 'Mackerel are boiling at the surface. Trophy predators are closing in.');
+    this.scheduleSpawn(0);
+  }
+
+  private endFeedingFrenzy() {
+    this.feedingFrenzyUntil = 0;
+    this.feedingFrenzyCenter = undefined;
+    this.feedingFrenzyMarker?.destroy();
+    this.feedingFrenzyMarker = undefined;
+    if (this.level.feedingFrenzyEvent) {
+      const [min, max] = this.level.feedingFrenzyEvent.intervalMs;
+      this.nextFeedingFrenzyAt = this.time.now + Phaser.Math.Between(min, max);
+    }
+  }
+
+  private spawnFeedingFrenzyBaitSchool(species: FishSpecies, count: number) {
+    if (!this.feedingFrenzyCenter) {
+      return;
+    }
+    const openSlots = this.maxFishForCurrentConditions() - this.fish.length;
+    const total = Math.min(count, Math.max(0, openSlots));
+    if (total <= 0) {
+      return;
+    }
+
+    const center = this.feedingFrenzyPosition();
+    const schoolId = this.nextSchoolId++;
+    const textureId = chooseAssetTextureId(species.assetId);
+    for (let index = 0; index < total; index += 1) {
+      const angle = (index / total) * Math.PI * 2;
+      const radius = this.s(Phaser.Math.Between(18, 86));
+      const direction: 1 | -1 = Math.cos(angle) >= 0 ? 1 : -1;
+      this.addSwimmingFish(
+        species,
+        direction,
+        center.x + Math.cos(angle) * radius,
+        Phaser.Math.Clamp(center.y + Math.sin(angle) * radius * 0.46, this.swimmableTop(), this.swimmableBottom()),
+        schoolId,
+        textureId,
+      );
+    }
+  }
+
+  private feedingFrenzyPosition() {
+    const center = this.feedingFrenzyCenter ?? { xRatio: 0.5, depthRatio: 0.32 };
+    return {
+      x: this.scale.width * center.xRatio,
+      y: this.waterYForDepthRatio(center.depthRatio),
+    };
+  }
+
+  private drawFeedingFrenzyMarker() {
+    if (!this.isFeedingFrenzyActive() || !this.feedingFrenzyCenter) {
+      return;
+    }
+    this.feedingFrenzyMarker?.destroy();
+    this.feedingFrenzyMarker = this.add.graphics();
+    this.feedingFrenzyMarker.setDepth(2);
+    this.updateFeedingFrenzyMarker();
+  }
+
+  private updateFeedingFrenzyMarker() {
+    if (!this.feedingFrenzyMarker || !this.isFeedingFrenzyActive() || !this.feedingFrenzyCenter) {
+      return;
+    }
+    const center = this.feedingFrenzyPosition();
+    const pulse = 0.5 + Math.sin(this.time.now * 0.01) * 0.5;
+    this.feedingFrenzyMarker.clear();
+    this.feedingFrenzyMarker.fillStyle(0xf8f2b6, 0.1 + pulse * 0.08);
+    this.feedingFrenzyMarker.fillEllipse(center.x, center.y, this.s(250 + pulse * 26), this.s(92 + pulse * 14));
+    this.feedingFrenzyMarker.lineStyle(this.s(2), 0xffe68a, 0.28 + pulse * 0.16);
+    this.feedingFrenzyMarker.strokeEllipse(center.x, center.y, this.s(250), this.s(92));
+    for (let index = 0; index < 10; index += 1) {
+      const x = center.x + Math.cos(index * 1.7 + this.time.now * 0.004) * this.s(46 + (index % 3) * 22);
+      const y = center.y + Math.sin(index * 1.3 + this.time.now * 0.005) * this.s(16 + (index % 2) * 10);
+      this.feedingFrenzyMarker.fillStyle(0xffffff, 0.16);
+      this.feedingFrenzyMarker.fillCircle(x, y, this.s(3 + (index % 3)));
     }
   }
 
@@ -1756,7 +2009,8 @@ export class LakeScene extends Phaser.Scene {
   private scheduleSpawn(delay?: number) {
     const [min, max] = this.level.spawnIntervalMs;
     const rainMultiplier = this.isRaining() ? (this.level.rainEvent?.spawnMultiplier ?? 1) : 1;
-    const spawnMultiplier = (this.activeChum?.spawnMultiplier ?? 1) * rainMultiplier;
+    const frenzyMultiplier = this.isFeedingFrenzyActive() ? 1.55 : 1;
+    const spawnMultiplier = (this.activeChum?.spawnMultiplier ?? 1) * rainMultiplier * frenzyMultiplier;
     this.nextSpawnAt = this.time.now + (delay ?? Phaser.Math.Between(min, max) / spawnMultiplier);
   }
 }

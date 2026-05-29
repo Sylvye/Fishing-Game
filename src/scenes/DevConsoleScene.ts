@@ -12,6 +12,8 @@ export class DevConsoleScene extends Phaser.Scene {
   private readonly saveStore = new SaveStore();
   private inputText = '';
   private outputText = 'Type a command. Examples: money add 500, unlock all, debug, fish info';
+  private commandHistory: string[] = [];
+  private historyIndex?: number;
   private commandLine?: Phaser.GameObjects.Text;
   private outputLine?: Phaser.GameObjects.Text;
   private keyHandler?: (event: KeyboardEvent) => void;
@@ -84,18 +86,29 @@ export class DevConsoleScene extends Phaser.Scene {
       this.executeCommand();
       return;
     }
+    if (event.key === 'ArrowUp') {
+      this.navigateHistory(-1);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      this.navigateHistory(1);
+      return;
+    }
     if (event.key === 'Backspace') {
       this.inputText = this.inputText.slice(0, -1);
+      this.historyIndex = undefined;
       this.updateLines();
       return;
     }
     if (event.key.length === 1 && this.inputText.length < 80) {
       this.inputText += event.key;
+      this.historyIndex = undefined;
       this.updateLines();
     }
   }
 
   private executeCommand() {
+    this.recordCommandHistory(this.inputText);
     const sceneCommand = parseSceneDeveloperCommand(this.inputText);
     if (sceneCommand.kind === 'error') {
       this.outputText = sceneCommand.message;
@@ -116,6 +129,42 @@ export class DevConsoleScene extends Phaser.Scene {
     this.outputText = result.message;
     this.inputText = '';
     this.render();
+  }
+
+  private recordCommandHistory(command: string) {
+    const trimmed = command.trim();
+    this.historyIndex = undefined;
+    if (!trimmed) {
+      return;
+    }
+    if (this.commandHistory[this.commandHistory.length - 1] === trimmed) {
+      return;
+    }
+    this.commandHistory.push(trimmed);
+  }
+
+  private navigateHistory(direction: -1 | 1) {
+    if (this.commandHistory.length === 0) {
+      return;
+    }
+
+    const nextIndex = this.historyIndex === undefined
+      ? this.commandHistory.length - 1
+      : this.historyIndex + direction;
+
+    if (nextIndex < 0) {
+      this.historyIndex = 0;
+    } else if (nextIndex >= this.commandHistory.length) {
+      this.historyIndex = undefined;
+      this.inputText = '';
+      this.updateLines();
+      return;
+    } else {
+      this.historyIndex = nextIndex;
+    }
+
+    this.inputText = this.commandHistory[this.historyIndex];
+    this.updateLines();
   }
 
   private updateLines() {

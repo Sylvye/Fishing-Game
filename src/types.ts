@@ -1,8 +1,8 @@
 export type AssetKind = 'fish' | 'rod' | 'boat' | 'lure' | 'bait' | 'chum' | 'ui';
 export type AttractorKind = 'lure' | 'bait';
 export type TargetDepth = 'surface' | 'mid' | 'deep';
-export type LevelId = 'river' | 'lake' | 'estuary' | 'coral-reef';
-export type LevelMechanic = 'swarm' | 'rain' | 'crab' | 'reef-hazards';
+export type LevelId = 'river' | 'lake' | 'estuary' | 'coral-reef' | 'open-ocean';
+export type LevelMechanic = 'swarm' | 'rain' | 'crab' | 'reef-hazards' | 'bluewater';
 
 export interface AssetManifestEntry {
   id: string;
@@ -156,6 +156,18 @@ export interface LevelConfig {
   hazards?: {
     count: number;
     snapLoadRatio: number;
+  };
+  feedingFrenzyEvent?: {
+    intervalMs: [number, number];
+    durationMs: number;
+    baitSpeciesId: string;
+    predatorSpeciesIds: string[];
+    baitSchoolSize: number;
+    predatorSpawnChance: number;
+  };
+  oceanCurrents?: {
+    surfacePush: number;
+    deepPush: number;
   };
 }
 

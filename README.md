@@ -1,6 +1,6 @@
 # Fishing Game
 
-A Phaser 3 + TypeScript fishing game prototype. The core scene is a 2D fishing cross-section with casting, reeling, fish collisions, randomized real fish weights, fish sale values, level-specific shops, and local save progression across River, Lake, Estuary, and Coral Reef locations.
+A Phaser 3 + TypeScript fishing game prototype. The core scene is a 2D fishing cross-section with casting, reeling, fish collisions, randomized real fish weights, fish sale values, level-specific shops, and local save progression across River, Lake, Estuary, Coral Reef, and Open Ocean locations.
 
 ## Run
 

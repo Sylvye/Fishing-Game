@@ -39,6 +39,15 @@ const levelStarterLoadouts: Record<LevelId, Pick<PlayerLevelSave, 'ownedRodIds' 
     equippedBaitId: 'shrimp',
     equippedBoatId: 'bay-skiff',
   },
+  'open-ocean': {
+    ownedRodIds: ['offshore-rod'],
+    ownedLureIds: ['bluewater-troll'],
+    ownedBoatIds: ['reef-runner'],
+    equippedRodId: 'offshore-rod',
+    equippedLureId: 'bluewater-troll',
+    equippedBaitId: 'squid-strips',
+    equippedBoatId: 'reef-runner',
+  },
 };
 
 export const defaultLevelSave = (levelId: LevelId = 'river'): PlayerLevelSave => ({
@@ -88,7 +97,7 @@ const normalizeLevelSave = (value: unknown, levelId: LevelId): PlayerLevelSave =
 };
 
 const isLevelId = (value: unknown): value is LevelId =>
-  value === 'river' || value === 'lake' || value === 'estuary' || value === 'coral-reef';
+  value === 'river' || value === 'lake' || value === 'estuary' || value === 'coral-reef' || value === 'open-ocean';
 
 const migrateLegacySave = (legacy: Partial<PlayerLevelSave>): PlayerSave => ({
   version: 2,

@@ -29,6 +29,7 @@ import {
   fishSchoolSeparationStrength,
   fishWeightVisualMultiplier,
 } from '../src/systems/fishSizing';
+import { oceanCurrentVelocity } from '../src/systems/oceanCurrents';
 import { defaultLevelSave, defaultSave, getLevelSave, normalizeSave, SAVE_KEY, SaveStore } from '../src/systems/save';
 
 describe('fish economy', () => {
@@ -339,6 +340,21 @@ describe('shop and save behavior', () => {
     expect(store.getCurrentLevelSave().money).toBe(22);
   });
 
+  it('normalizes Open Ocean saves with starter bluewater gear', () => {
+    const normalized = normalizeSave({
+      version: 2,
+      currentLevelId: 'open-ocean',
+      unlockedLevelIds: ['river', 'lake', 'estuary', 'coral-reef', 'open-ocean'],
+      levels: {
+        'open-ocean': {},
+      },
+    });
+
+    expect(normalized.currentLevelId).toBe('open-ocean');
+    expect(getLevelSave(normalized, 'open-ocean').ownedRodIds).toEqual(['offshore-rod']);
+    expect(getLevelSave(normalized, 'open-ocean').equippedLureId).toBe('bluewater-troll');
+  });
+
   it('unlocks the next level with a Ferry Ticket and starts a fresh local save', () => {
     const river = {
       ...defaultLevelSave('river'),
@@ -371,11 +387,12 @@ describe('shop and save behavior', () => {
     const result = applyDeveloperCommand(save, 'unlock all');
 
     expect(result.message).toBe('Unlocked all maps and permanent tackle.');
-    expect(result.save.unlockedLevelIds).toEqual(['river', 'lake', 'estuary', 'coral-reef']);
+    expect(result.save.unlockedLevelIds).toEqual(['river', 'lake', 'estuary', 'coral-reef', 'open-ocean']);
     expect(getLevelSave(result.save, 'river').ownedRodIds).toEqual(['twig-rod', 'bamboo-rod', 'graphite-rod']);
     expect(getLevelSave(result.save, 'lake').ownedLureIds).toEqual(['silver-spoon', 'minnow-crank', 'scented-sinker']);
     expect(getLevelSave(result.save, 'estuary').ownedCrabPotIds).toEqual(['starter-crab-pot', 'wire-crab-pot']);
     expect(getLevelSave(result.save, 'coral-reef').ownedBoatIds).toEqual(['bay-skiff', 'reef-runner']);
+    expect(getLevelSave(result.save, 'open-ocean').ownedRodIds).toEqual(['offshore-rod', 'bluewater-rod', 'titan-rod']);
   });
 
   it('parses developer fish commands', () => {
@@ -412,7 +429,7 @@ describe('shop and save behavior', () => {
 
 describe('level data', () => {
   it('defines the requested level order', () => {
-    expect(levels.map((level) => level.id)).toEqual(['river', 'lake', 'estuary', 'coral-reef']);
+    expect(levels.map((level) => level.id)).toEqual(['river', 'lake', 'estuary', 'coral-reef', 'open-ocean']);
   });
 
   it('defines each required fish pool', () => {
@@ -420,6 +437,15 @@ describe('level data', () => {
     expect(levels[1].fishPool).toEqual(['bluegill', 'largemouth-bass', 'smallmouth-bass', 'black-crappie', 'northern-pike', 'walleye', 'blue-catfish']);
     expect(levels[2].fishPool).toEqual(['gray-mullet', 'striped-bass', 'yellowtail-flounder', 'red-drum', 'black-drum', 'tarpon', 'bull-shark', 'sandbar-shark']);
     expect(levels[3].fishPool).toEqual(['damselfish', 'butterflyfish', 'rainbow-parrotfish', 'clown-triggerfish', 'red-lionfish', 'goliath-grouper', 'great-barracuda', 'mahi-mahi', 'blacktip-reef-shark', 'hammerhead-shark']);
+    expect(levels[4].fishPool).toEqual(['atlantic-mackerel', 'wahoo', 'yellowfin-tuna', 'mahi-mahi', 'giant-trevally', 'blue-marlin', 'shortfin-mako-shark', 'common-thresher-shark', 'whale-shark']);
+  });
+
+  it('connects Coral Reef to Open Ocean progression', () => {
+    expect(levels[3].nextLevelId).toBe('open-ocean');
+    expect(levels[3].ferryTicketPrice).toBe(3200);
+    expect(levels[4].mechanic).toBe('bluewater');
+    expect(levels[4].feedingFrenzyEvent?.baitSpeciesId).toBe('atlantic-mackerel');
+    expect(levels[4].oceanCurrents).toEqual({ surfacePush: -26, deepPush: 34 });
   });
 
   it('has species and assets for every configured fish id', () => {
@@ -438,5 +464,14 @@ describe('level data', () => {
     expect(getAssetTextureIds('fish-butterflyfish')).toHaveLength(7);
     expect(chooseAssetTextureId('fish-damselfish', () => 0)).toBe('fish-damselfish');
     expect(chooseAssetTextureId('fish-damselfish', () => 0.999)).toBe('fish-damselfish-royal-damselfish');
+  });
+
+  it('pushes surface water west and deep open ocean water east', () => {
+    const currents = levels[4].oceanCurrents;
+
+    expect(oceanCurrentVelocity(0, currents)).toBeLessThan(0);
+    expect(oceanCurrentVelocity(0.5, currents)).toBe(0);
+    expect(oceanCurrentVelocity(1, currents)).toBeGreaterThan(0);
+    expect(oceanCurrentVelocity(0.2, undefined)).toBe(0);
   });
 });

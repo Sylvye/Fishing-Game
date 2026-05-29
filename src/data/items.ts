@@ -12,6 +12,7 @@ export const rods: Rod[] = [
   { id: 'reef-rod', displayName: 'Reef Rod', price: 260, maxCastDistance: 430, reelSpeed: 150, weightHandling: 38 },
   { id: 'offshore-rod', displayName: 'Offshore Rod', price: 900, maxCastDistance: 620, reelSpeed: 190, weightHandling: 82 },
   { id: 'bluewater-rod', displayName: 'Bluewater Rod', price: 1800, maxCastDistance: 720, reelSpeed: 220, weightHandling: 130 },
+  { id: 'titan-rod', displayName: 'Titan Rod', price: 3600, maxCastDistance: 780, reelSpeed: 235, weightHandling: 220 },
 ];
 
 export const lures: Lure[] = [
@@ -113,6 +114,19 @@ export const lures: Lure[] = [
     attractStrength: 130,
     soloStressMultiplier: 0.5,
   },
+  {
+    id: 'abyss-troll',
+    displayName: 'Abyss Troll',
+    price: 1100,
+    attractionBonus: 1.36,
+    rarityBonus: 0.32,
+    targetDepth: 'deep',
+    tags: ['lure', 'minnow', 'deep', 'offshore', 'shark'],
+    attractRadius: 210,
+    attractChance: 0.5,
+    attractStrength: 142,
+    soloStressMultiplier: 0.46,
+  },
 ];
 
 export const baits: Bait[] = [
@@ -207,6 +221,19 @@ export const baits: Bait[] = [
     attractChance: 0.68,
     attractStrength: 96,
   },
+  {
+    id: 'whole-squid',
+    displayName: 'Whole Squid',
+    price: 48,
+    usesPerPurchase: 3,
+    attractionBonus: 1.26,
+    rarityBonus: 0.22,
+    targetDepth: 'deep',
+    tags: ['bait', 'scent', 'deep', 'offshore', 'shark'],
+    attractRadius: 188,
+    attractChance: 0.72,
+    attractStrength: 104,
+  },
 ];
 
 export const chums: Chum[] = [
@@ -260,6 +287,16 @@ export const chums: Chum[] = [
     targetSpeciesIds: ['damselfish', 'butterflyfish', 'rainbow-parrotfish'],
     rarityBonus: 0.08,
   },
+  {
+    id: 'bluewater-slick',
+    displayName: 'Bluewater Slick',
+    price: 70,
+    durationSeconds: 55,
+    spawnMultiplier: 1.45,
+    tags: ['minnow', 'offshore', 'scent'],
+    targetSpeciesIds: ['atlantic-mackerel', 'wahoo', 'yellowfin-tuna', 'blue-marlin'],
+    rarityBonus: 0.16,
+  },
 ];
 
 export const boats: Boat[] = [
@@ -268,6 +305,7 @@ export const boats: Boat[] = [
   { id: 'bass-boat', displayName: 'Bass Boat', price: 900, moveSpeed: 255, cashMultiplier: 1.4 },
   { id: 'bay-skiff', displayName: 'Bay Skiff', price: 1150, moveSpeed: 270, cashMultiplier: 1.55 },
   { id: 'reef-runner', displayName: 'Reef Runner', price: 1600, moveSpeed: 295, cashMultiplier: 1.7 },
+  { id: 'bluewater-cruiser', displayName: 'Bluewater Cruiser', price: 4200, moveSpeed: 320, cashMultiplier: 1.9 },
 ];
 
 export const crabPots: CrabPot[] = [
@@ -304,6 +342,13 @@ export const shopCatalogs: Record<LevelId, Partial<Record<ShopItemKind, string[]
     bait: ['shrimp', 'squid-strips', 'cut-bait'],
     chum: ['reef-cloud', 'baitfish-slick'],
     boat: ['bay-skiff', 'reef-runner'],
+  },
+  'open-ocean': {
+    rod: ['offshore-rod', 'bluewater-rod', 'titan-rod'],
+    lure: ['bluewater-troll', 'abyss-troll', 'shark-plug'],
+    bait: ['squid-strips', 'whole-squid', 'cut-bait'],
+    chum: ['bluewater-slick', 'baitfish-slick'],
+    boat: ['reef-runner', 'bluewater-cruiser'],
   },
 };
 

@@ -37,14 +37,14 @@ const fish = (
 });
 
 export const fishSpecies: FishSpecies[] = [
-  fish('minnow', 'Minnow', 'Cyprinidae spp.', 'common', 0.7, [0.1, 0.38], [24, 58], 3, [0.02, 0.08, 0.25], [1, 10], ['bait', 'insect', 'small'], 1.0, [8, 20]),
+  fish('minnow', 'Minnow', 'Cyprinidae spp.', 'common', 0.4, [0.1, 0.38], [24, 58], 3, [0.02, 0.08, 0.25], [1, 10], ['bait', 'insect', 'small'], 1.0, [14, 28]),
   fish('bluegill', 'Bluegill', 'Lepomis macrochirus', 'common', 1, [0.18, 0.55], [18, 40], 8, [0.15, 0.45, 2.1], [4, 15], ['bait', 'insect', 'small', 'worm'], 0.78, [2, 5]),
   fish('largemouth-bass', 'Largemouth Bass', 'Micropterus salmoides', 'uncommon', 1.25, [0.24, 0.7], [28, 60], 18, [0.7, 2.8, 12], [8, 6], ['lure', 'minnow', 'spinner', 'crayfish'], 0.34, [1, 3]),
   fish('smallmouth-bass', 'Smallmouth Bass', 'Micropterus dolomieu', 'uncommon', 1.3, [0.3, 0.72], [34, 70], 16, [0.5, 2, 8], [10, 7], ['lure', 'minnow', 'spinner', 'crayfish'], 0.42, [1, 3]),
-  fish('rainbow-trout', 'Rainbow Trout', 'Oncorhynchus mykiss', 'rare', 1.55, [0.22, 0.66], [42, 82], 18, [0.5, 1.8, 10], [18, 11], ['lure', 'bait', 'insect', 'spoon'], 0.5, [1, 4]),
-  fish('sockeye-salmon', 'Sockeye Salmon', 'Oncorhynchus nerka', 'rare', 1.8, [0.28, 0.8], [52, 96], 24, [3, 9, 38], [26, 8], ['lure', 'bait', 'minnow', 'spoon'], 0.28, [2, 6]),
+  fish('rainbow-trout', 'Rainbow Trout', 'Oncorhynchus mykiss', 'rare', 1.55, [0.22, 0.66], [42, 82], 18, [0.5, 1.8, 10], [18, 11], ['lure', 'bait', 'insect', 'spoon'], 0.2, [6, 10]),
+  fish('sockeye-salmon', 'Sockeye Salmon', 'Oncorhynchus nerka', 'rare', 1.6, [0.28, 0.8], [52, 96], 24, [3, 9, 38], [26, 8], ['lure', 'bait', 'minnow', 'spoon'], 0.1, [8, 16]),
   fish('atlantic-sturgeon', 'Atlantic Sturgeon', 'Acipenser oxyrinchus', 'legendary', 2.3, [0.68, 0.98], [12, 34], 72, [8, 35, 160], [55, 4], ['bait', 'scent', 'deep'], 0.04, [1, 1]),
-  fish('channel-catfish', 'Channel Catfish', 'Ictalurus punctatus', 'uncommon', 1.2, [0.58, 0.96], [14, 34], 24, [1, 5, 25], [9, 6], ['bait', 'scent', 'catfish', 'deep'], 0.22, [1, 2]),
+  fish('channel-catfish', 'Channel Catfish', 'Ictalurus punctatus', 'rare', 2, [0.58, 0.96], [14, 34], 28, [1, 5, 25], [9, 6], ['bait', 'scent', 'catfish', 'deep'], 0.22, [1, 2]),
   fish('black-crappie', 'Black Crappie', 'Pomoxis nigromaculatus', 'common', 1.05, [0.22, 0.58], [22, 48], 11, [0.25, 0.9, 3.5], [5, 12], ['bait', 'lure', 'minnow', 'small'], 0.72, [2, 6]),
   fish('northern-pike', 'Northern Pike', 'Esox lucius', 'rare', 1.65, [0.34, 0.78], [50, 95], 30, [2, 6, 30], [22, 7], ['lure', 'minnow', 'spinner'], 0.04, [1, 1], ['fearsome']),
   fish('walleye', 'Walleye', 'Sander vitreus', 'rare', 1.75, [0.5, 0.9], [30, 64], 20, [1, 3.2, 15], [24, 10], ['lure', 'bait', 'minnow', 'deep'], 0.34, [1, 3]),
@@ -68,6 +68,14 @@ export const fishSpecies: FishSpecies[] = [
   fish('mahi-mahi', 'Mahi-Mahi', 'Coryphaena hippurus', 'legendary', 2, [0.2, 0.72], [72, 130], 36, [15, 30, 90], [58, 6], ['lure', 'minnow', 'offshore'], 0.08, [1, 3], ['strong']),
   fish('blacktip-reef-shark', 'Blacktip Reef Shark', 'Carcharhinus melanopterus', 'legendary', 2.2, [0.48, 0.95], [48, 92], 60, [18, 55, 150], [82, 3], ['lure', 'bait', 'scent', 'deep', 'shark'], 0.03, [1, 1], ['fearsome', 'strong']),
   fish('hammerhead-shark', 'Hammerhead Shark', 'Sphyrna mokarran', 'legendary', 2.45, [0.58, 0.98], [42, 86], 120, [60, 240, 900], [120, 2], ['lure', 'bait', 'scent', 'deep', 'shark'], 0.015, [1, 1], ['fearsome', 'strong']),
+  fish('atlantic-mackerel', 'Atlantic Mackerel', 'Scomber scombrus', 'common', 0.85, [0.12, 0.48], [72, 136], 16, [0.5, 1.8, 6], [10, 14], ['lure', 'bait', 'minnow', 'small', 'offshore'], 0.92, [8, 18]),
+  fish('wahoo', 'Wahoo', 'Acanthocybium solandri', 'rare', 2.05, [0.18, 0.72], [95, 165], 58, [12, 38, 120], [74, 7], ['lure', 'minnow', 'offshore'], 0.05, [1, 2], ['strong']),
+  fish('yellowfin-tuna', 'Yellowfin Tuna', 'Thunnus albacares', 'legendary', 2.35, [0.22, 0.86], [82, 148], 72, [35, 120, 420], [92, 4], ['lure', 'bait', 'minnow', 'deep', 'offshore'], 0.12, [1, 3], ['strong']),
+  fish('giant-trevally', 'Giant Trevally', 'Caranx ignobilis', 'rare', 2.1, [0.24, 0.76], [66, 124], 54, [18, 72, 180], [82, 5], ['lure', 'bait', 'minnow', 'offshore'], 0.08, [1, 2], ['fearsome', 'strong']),
+  fish('blue-marlin', 'Blue Marlin', 'Makaira nigricans', 'legendary', 2.8, [0.16, 0.72], [88, 158], 132, [140, 420, 1400], [170, 2], ['lure', 'minnow', 'deep', 'offshore'], 0.015, [1, 1], ['strong']),
+  fish('shortfin-mako-shark', 'Shortfin Mako Shark', 'Isurus oxyrinchus', 'legendary', 2.65, [0.35, 0.94], [78, 150], 108, [90, 260, 1000], [145, 2], ['lure', 'bait', 'scent', 'deep', 'shark', 'offshore'], 0.012, [1, 1], ['fearsome', 'strong']),
+  fish('common-thresher-shark', 'Common Thresher Shark', 'Alopias vulpinus', 'legendary', 2.6, [0.45, 0.98], [54, 112], 144, [120, 350, 1250], [155, 2], ['lure', 'bait', 'scent', 'deep', 'shark', 'offshore'], 0.012, [1, 1], ['fearsome', 'strong']),
+  fish('whale-shark', 'Whale Shark', 'Rhincodon typus', 'legendary', 8, [0.3, 0.9], [14, 34], 420, [2000, 9000, 26000], [250, 0.05], ['bait', 'scent', 'deep', 'offshore'], 0.0, [1, 1], ['stoic']),
 ];
 
 export const fishById = new Map(fishSpecies.map((species) => [species.id, species]));
