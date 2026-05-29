@@ -31,6 +31,7 @@ export interface FishSpecies {
   rarityMultiplier: number;
   depthRange: [number, number];
   speedRange: [number, number];
+  visualLengthInches: number;
   minimumWeightLb: number;
   averageWeightLb: number;
   trophyWeightLb: number;

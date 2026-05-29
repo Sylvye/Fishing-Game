@@ -13,9 +13,12 @@ import {
   randomFishWeight,
   recordCrabCatch,
   recordCatch,
+  soloStressMultiplierForHookedFish,
 } from '../systems/economy';
+import { fishDebugUidForIndex, formatFishDebugLookup, formatFishDebugSummary, type FishDebugSnapshot } from '../systems/fishDebug';
+import { fishDisplaySize, fishDisplayWidth, fishSchoolCohesionStrength, fishSchoolSeparationRadius, fishSchoolSeparationStrength } from '../systems/fishSizing';
 import { getLevelSave, SaveStore } from '../systems/save';
-import type { FishDeveloperCommand } from '../systems/devConsole';
+import type { FishDeveloperCommand, SceneDeveloperCommand } from '../systems/devConsole';
 import type { AttractorKind, AttractorProfile, Bait, Boat, Chum, FishSpecies, LevelConfig, Lure, PlayerLevelSave, PlayerSave, Rod } from '../types';
 
 type HookState = 'idle' | 'charging' | 'cast' | 'sinking' | 'reeling';
@@ -27,9 +30,11 @@ const referenceHeight = 720;
 const fearsomeRepelRadius = 132;
 const fearsomeRepelStrength = 150;
 const schoolingNeighborRadius = 128;
-const schoolingSeparationRadius = 42;
 const preferredDepthLeashRatio = 0.12;
 const hookedFishPullSpeedMultiplier = 1.25;
+const toastScaleStep = 0.045;
+const toastMinimumScale = 0.86;
+const toastOverlap = 18;
 const lineLoadColorStops = [
   { ratio: 0, color: 0xffffff },
   { ratio: 0.6, color: 0xffff00 },
@@ -64,6 +69,7 @@ function lineColorForLoadRatio(ratio: number) {
 }
 
 interface SwimmingFish {
+  uid: string;
   sprite: Phaser.GameObjects.Image;
   species: FishSpecies;
   weightLb: number;
@@ -75,11 +81,13 @@ interface SwimmingFish {
   preferredDepthRatio: number;
   wanderPhase: number;
   schoolId?: number;
+  debugLabel?: Phaser.GameObjects.Text;
   attractedUntil?: number;
   nextAttractionCheckAt?: number;
 }
 
 interface HookedFish {
+  uid: string;
   sprite: Phaser.GameObjects.Image;
   species: FishSpecies;
   weightLb: number;
@@ -148,6 +156,8 @@ export class LakeScene extends Phaser.Scene {
   private isInputDown = false;
   private fish: SwimmingFish[] = [];
   private hookedFish: HookedFish[] = [];
+  private fishDebugEnabled = false;
+  private nextFishUid = 0;
   private nextSpawnAt = 0;
   private layoutWidth = 0;
   private layoutHeight = 0;
@@ -182,6 +192,7 @@ export class LakeScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', this.handleResize, this);
       this.events.off(Phaser.Scenes.Events.RESUME, this.handleResume, this);
+      this.destroyFishDebugLabels();
       this.fish = [];
       this.hookedFish = [];
       this.background = undefined;
@@ -195,7 +206,22 @@ export class LakeScene extends Phaser.Scene {
     });
   }
 
-  applyFishDeveloperCommand(command: FishDeveloperCommand) {
+  applySceneDeveloperCommand(command: SceneDeveloperCommand) {
+    if (command.action === 'debug') {
+      return this.toggleFishDebug();
+    }
+
+    return this.applyFishDeveloperCommand(command);
+  }
+
+  private applyFishDeveloperCommand(command: FishDeveloperCommand) {
+    if (command.action === 'clear') {
+      return this.clearDeveloperFish();
+    }
+    if (command.action === 'info') {
+      return command.uid ? this.fishDebugInfoForUid(command.uid) : this.fishDebugSummary();
+    }
+
     const species = fishById.get(command.speciesId);
     if (!species) {
       return `Unknown fish type: ${command.speciesId}.`;
@@ -207,6 +233,52 @@ export class LakeScene extends Phaser.Scene {
     }
 
     return this.spawnDeveloperFish(species, count, command.weightLb);
+  }
+
+  private toggleFishDebug() {
+    this.fishDebugEnabled = !this.fishDebugEnabled;
+    this.updateFishDebugLabels();
+    return `Debug ${this.fishDebugEnabled ? 'on' : 'off'}.`;
+  }
+
+  private fishDebugSummary() {
+    return formatFishDebugSummary(this.fishDebugSnapshots());
+  }
+
+  private fishDebugInfoForUid(uid: string) {
+    return formatFishDebugLookup(this.fishDebugSnapshots(), uid);
+  }
+
+  private fishDebugSnapshots(): FishDebugSnapshot[] {
+    return [
+      ...this.fish.map((fish) => ({
+        uid: fish.uid,
+        state: 'swimming' as const,
+        speciesId: fish.species.id,
+        displayName: fish.species.displayName,
+        weightLb: fish.weightLb,
+        x: fish.sprite.x,
+        y: fish.sprite.y,
+        depthRatio: this.depthRatioForY(fish.sprite.y),
+        velocityX: fish.velocityX / this.gameplayScale,
+        velocityY: fish.velocityY / this.gameplayScale,
+        speed: Math.hypot(fish.velocityX, fish.velocityY) / this.gameplayScale,
+        schoolId: fish.schoolId,
+      })),
+      ...this.hookedFish.map((fish) => ({
+        uid: fish.uid,
+        state: 'hooked' as const,
+        speciesId: fish.species.id,
+        displayName: fish.species.displayName,
+        weightLb: fish.weightLb,
+        x: fish.sprite.x,
+        y: fish.sprite.y,
+        depthRatio: this.depthRatioForY(fish.sprite.y),
+        pullSpeed: fish.pullSpeed,
+        pullAngle: fish.pullAngle,
+        pullTurnSpeed: fish.pullTurnSpeed,
+      })),
+    ];
   }
 
   update(_time: number, deltaMs: number) {
@@ -289,6 +361,7 @@ export class LakeScene extends Phaser.Scene {
     this.createHud();
     this.createHook();
     this.updateHookedFishVisuals();
+    this.updateFishDebugLabels();
   }
 
   private handleInputDown() {
@@ -662,7 +735,8 @@ export class LakeScene extends Phaser.Scene {
   private hookedFishPullStrength(fish: HookedFish) {
     const rodLoadRatio = fish.weightLb / Math.max(1, this.rod.weightHandling);
     const strengthMultiplier = fish.species.behaviorTags.includes('strong') ? 2 : 1;
-    return this.s(fish.pullSpeed * rodLoadRatio * hookedFishPullSpeedMultiplier * strengthMultiplier);
+    const soloStressMultiplier = soloStressMultiplierForHookedFish(this.hookedFish, this.activeStressLure());
+    return this.s(fish.pullSpeed * rodLoadRatio * hookedFishPullSpeedMultiplier * strengthMultiplier * soloStressMultiplier);
   }
 
   private sinkSpeed() {
@@ -736,6 +810,48 @@ export class LakeScene extends Phaser.Scene {
     });
   }
 
+  private nextFishUidValue() {
+    return fishDebugUidForIndex(this.nextFishUid++);
+  }
+
+  private ensureFishDebugLabel(swimmer: SwimmingFish) {
+    if (!this.fishDebugEnabled) {
+      return;
+    }
+    if (!swimmer.debugLabel) {
+      swimmer.debugLabel = this.add.text(0, 0, swimmer.uid, {
+        color: '#fff7ad',
+        fontSize: this.fontSize(11),
+        fontFamily: 'Consolas, monospace',
+        backgroundColor: 'rgba(7, 17, 22, 0.72)',
+        padding: { x: this.s(4), y: this.s(2) },
+      }).setOrigin(0.5, 1).setDepth(18);
+    }
+    this.positionFishDebugLabel(swimmer);
+  }
+
+  private positionFishDebugLabel(swimmer: SwimmingFish) {
+    swimmer.debugLabel?.setPosition(swimmer.sprite.x, swimmer.sprite.y - swimmer.sprite.displayHeight / 2 - this.s(5));
+  }
+
+  private updateFishDebugLabels() {
+    for (const swimmer of this.fish) {
+      if (this.fishDebugEnabled) {
+        this.ensureFishDebugLabel(swimmer);
+      } else if (swimmer.debugLabel) {
+        swimmer.debugLabel.destroy();
+        swimmer.debugLabel = undefined;
+      }
+    }
+  }
+
+  private destroyFishDebugLabels() {
+    this.fish.forEach((fish) => {
+      fish.debugLabel?.destroy();
+      fish.debugLabel = undefined;
+    });
+  }
+
   private resetHookToBoat() {
     const rest = this.lureRestPosition();
     this.hookState = 'idle';
@@ -774,7 +890,8 @@ export class LakeScene extends Phaser.Scene {
       fish.sprite.setDepth(2);
       const cruiseSpeed = this.s(Phaser.Math.FloatBetween(fish.species.speedRange[1] * 1.2, fish.species.speedRange[1] * 1.65));
 
-      this.fish.push({
+      const swimmer: SwimmingFish = {
+        uid: fish.uid,
         sprite: fish.sprite,
         species: fish.species,
         weightLb: fish.weightLb,
@@ -785,7 +902,9 @@ export class LakeScene extends Phaser.Scene {
         velocityY: this.s(Phaser.Math.Between(-70, 70)),
         preferredDepthRatio: this.depthRatioForY(fish.sprite.y),
         wanderPhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
-      });
+      };
+      this.fish.push(swimmer);
+      this.ensureFishDebugLabel(swimmer);
     });
   }
 
@@ -893,6 +1012,7 @@ export class LakeScene extends Phaser.Scene {
       sprite.setAlpha(0.88);
       sprite.setDepth(5);
       this.hookedFish.push({
+        uid: this.nextFishUidValue(),
         sprite,
         species,
         weightLb,
@@ -907,6 +1027,24 @@ export class LakeScene extends Phaser.Scene {
     const totalWeight = this.totalHookedWeight();
     this.showToast('Developer hook', `${count} ${species.displayName} on line. Total load ${totalWeight.toFixed(2)} lb.`);
     return `Hooked ${count} ${species.displayName}${requestedWeightLb ? ` at ${requestedWeightLb.toFixed(2)} lb each` : ''}.`;
+  }
+
+  private clearDeveloperFish() {
+    const clearedCount = this.fish.length + this.hookedFish.length;
+    this.fish.forEach((fish) => {
+      fish.debugLabel?.destroy();
+      fish.sprite.destroy();
+    });
+    this.hookedFish.forEach((fish) => fish.sprite.destroy());
+    this.fish = [];
+    this.hookedFish = [];
+    this.lineStress = 0;
+
+    if (clearedCount > 0) {
+      this.showToast('Developer clear', `${clearedCount} active fish removed.`);
+    }
+
+    return clearedCount > 0 ? `Cleared ${clearedCount} active fish.` : 'No active fish to clear.';
   }
 
   private moveDeveloperHookIntoWater() {
@@ -941,7 +1079,8 @@ export class LakeScene extends Phaser.Scene {
     this.resizeFishSprite(sprite, species, weightLb);
     sprite.setFlipX(direction === 1);
     sprite.setAlpha(0.92);
-    this.fish.push({
+    const swimmer: SwimmingFish = {
+      uid: this.nextFishUidValue(),
       sprite,
       species,
       weightLb,
@@ -953,13 +1092,15 @@ export class LakeScene extends Phaser.Scene {
       preferredDepthRatio: this.depthRatioForY(y),
       wanderPhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       schoolId,
-    });
+    };
+    this.fish.push(swimmer);
+    this.ensureFishDebugLabel(swimmer);
   }
 
   private resizeFishSprite(sprite: Phaser.GameObjects.Image, species: FishSpecies, weightLb: number) {
-    const weightRatio = Phaser.Math.Clamp((weightLb - species.minimumWeightLb) / (species.trophyWeightLb - species.minimumWeightLb), 0, 1);
-    const sizeMultiplier = 0.74 + Math.sqrt(weightRatio) * 0.74;
-    sprite.setDisplaySize(this.s((72 + species.rarityMultiplier * 18) * sizeMultiplier), this.s((36 + species.rarityMultiplier * 8) * sizeMultiplier));
+    const textureAspectRatio = sprite.width / Math.max(1, sprite.height);
+    const displaySize = fishDisplaySize(species, weightLb, textureAspectRatio);
+    sprite.setDisplaySize(this.s(displaySize.width), this.s(displaySize.height));
   }
 
   private loadSaveAndEquipment() {
@@ -1019,10 +1160,12 @@ export class LakeScene extends Phaser.Scene {
     this.fish = this.fish.filter((swimmer) => {
       const visible = swimmer.sprite.x > -this.s(140) && swimmer.sprite.x < width + this.s(140);
       if (!visible) {
+        swimmer.debugLabel?.destroy();
         swimmer.sprite.destroy();
       }
       return visible;
     });
+    this.updateFishDebugLabels();
   }
 
   private addCruiseSteering(swimmer: SwimmingFish, steering: { x: number; y: number }) {
@@ -1053,7 +1196,7 @@ export class LakeScene extends Phaser.Scene {
     }
 
     const neighborRadius = this.s(schoolingNeighborRadius);
-    const separationRadius = this.s(schoolingSeparationRadius);
+    const separationRadius = this.s(fishSchoolSeparationRadius(swimmer.species));
     let neighborCount = 0;
     let averageX = 0;
     let averageY = 0;
@@ -1093,6 +1236,8 @@ export class LakeScene extends Phaser.Scene {
     averageY /= neighborCount;
     averageVelocityX /= neighborCount;
     averageVelocityY /= neighborCount;
+    const cohesionStrength = fishSchoolCohesionStrength(swimmer.species);
+    const separationStrength = this.s(fishSchoolSeparationStrength(swimmer.species));
     this.steerTowardVelocity(swimmer, averageVelocityX, averageVelocityY, steering, 0.42);
 
     const cohesionAngle = Phaser.Math.Angle.Between(swimmer.sprite.x, swimmer.sprite.y, averageX, averageY);
@@ -1101,11 +1246,11 @@ export class LakeScene extends Phaser.Scene {
       Math.cos(cohesionAngle) * swimmer.cruiseSpeed * 0.72,
       Math.sin(cohesionAngle) * swimmer.cruiseSpeed * 0.42,
       steering,
-      0.24,
+      cohesionStrength,
     );
 
-    steering.x += separationX * this.s(90);
-    steering.y += separationY * this.s(72);
+    steering.x += separationX * separationStrength;
+    steering.y += separationY * separationStrength * 0.8;
   }
 
   private addFearsomeAvoidance(swimmer: SwimmingFish, steering: { x: number; y: number }) {
@@ -1220,13 +1365,21 @@ export class LakeScene extends Phaser.Scene {
     if (this.hookState === 'idle' || this.hookState === 'charging' || this.hookY < this.waterTop) {
       return;
     }
-    const radius = this.s(27 + this.currentAttractor().item.attractionBonus * 5);
-    const caught = this.fish.find((swimmer) => Phaser.Math.Distance.Between(this.hookX, this.hookY, swimmer.sprite.x, swimmer.sprite.y) < radius);
+    const baseRadius = this.s(27 + this.currentAttractor().item.attractionBonus * 5);
+    const caught = this.fish.find((swimmer) => {
+      const intendedDisplayWidth = this.s(fishDisplayWidth(swimmer.species, swimmer.weightLb));
+      const sizeRadiusAdjustment = Phaser.Math.Clamp((intendedDisplayWidth - this.s(80)) * 0.08, -this.s(8), this.s(16));
+      const radius = baseRadius + sizeRadiusAdjustment;
+      return Phaser.Math.Distance.Between(this.hookX, this.hookY, swimmer.sprite.x, swimmer.sprite.y) < radius;
+    });
     if (!caught) {
       return;
     }
     this.fish = this.fish.filter((swimmer) => swimmer !== caught);
+    caught.debugLabel?.destroy();
+    caught.debugLabel = undefined;
     this.hookedFish.push({
+      uid: caught.uid,
       sprite: caught.sprite,
       species: caught.species,
       weightLb: caught.weightLb,
@@ -1238,7 +1391,7 @@ export class LakeScene extends Phaser.Scene {
     const totalWeight = this.totalHookedWeight();
     const attractor = this.currentAttractor();
     const soloStressText = attractor.kind === 'lure' && this.hookedFish.length === 1 && attractor.item.soloStressMultiplier
-      ? ` Solo stress reduced ${Math.round((1 - attractor.item.soloStressMultiplier) * 100)}%.`
+      ? ` Solo stress and pull reduced ${Math.round((1 - attractor.item.soloStressMultiplier) * 100)}%.`
       : '';
     this.showToast(
       `Hooked ${caught.species.displayName}`,
@@ -1278,6 +1431,7 @@ export class LakeScene extends Phaser.Scene {
     };
     this.nextToastId += 1;
     container.setAlpha(0);
+    container.setScale(this.toastScaleForIndex(1));
     container.setDepth(35);
     this.activeToasts.unshift(toast);
     this.pruneToastsForViewport();
@@ -1285,10 +1439,18 @@ export class LakeScene extends Phaser.Scene {
     this.time.delayedCall(3000, () => this.dismissToast(toast.id));
   }
 
+  private toastScaleForIndex(index: number) {
+    return Math.max(toastMinimumScale, 1 - index * toastScaleStep);
+  }
+
   private toastYForIndex(index: number) {
     let y = this.s(104);
-    for (let i = 0; i < index; i += 1) {
-      y += this.activeToasts[i].height + this.s(10);
+    for (let i = 1; i <= index; i += 1) {
+      const previousScale = this.toastScaleForIndex(i - 1);
+      const currentScale = this.toastScaleForIndex(i);
+      y += (this.activeToasts[i - 1].height * previousScale) / 2;
+      y += (this.activeToasts[i].height * currentScale) / 2;
+      y -= this.s(toastOverlap);
     }
     return y;
   }
@@ -1300,6 +1462,8 @@ export class LakeScene extends Phaser.Scene {
         targets: toast.container,
         x: this.scale.width / 2,
         y: this.toastYForIndex(index),
+        scaleX: this.toastScaleForIndex(index),
+        scaleY: this.toastScaleForIndex(index),
         alpha: 1,
         duration: 300,
         ease: 'Cubic.Out',
@@ -1318,6 +1482,8 @@ export class LakeScene extends Phaser.Scene {
       targets: toast.container,
       alpha: 0,
       y: toast.container.y - this.s(18),
+      scaleX: toast.container.scaleX * 0.98,
+      scaleY: toast.container.scaleY * 0.98,
       duration: 420,
       ease: 'Cubic.In',
       onComplete: () => toast.container.destroy(),
@@ -1329,7 +1495,7 @@ export class LakeScene extends Phaser.Scene {
     const maxBottom = this.scale.height - this.s(24);
     while (this.activeToasts.length > 1) {
       const stackBottom = this.activeToasts.reduce((bottom, toast, index) => {
-        const toastBottom = this.toastYForIndex(index) + toast.height / 2;
+        const toastBottom = this.toastYForIndex(index) + (toast.height * this.toastScaleForIndex(index)) / 2;
         return Math.max(bottom, toastBottom);
       }, 0);
       if (stackBottom <= maxBottom) {
@@ -1344,6 +1510,8 @@ export class LakeScene extends Phaser.Scene {
         targets: toast.container,
         alpha: 0,
         y: toast.container.y - this.s(12),
+        scaleX: toast.container.scaleX * 0.98,
+        scaleY: toast.container.scaleY * 0.98,
         duration: 220,
         ease: 'Cubic.In',
         onComplete: () => toast.container.destroy(),

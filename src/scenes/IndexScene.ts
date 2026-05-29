@@ -134,7 +134,7 @@ export class IndexScene extends Phaser.Scene {
     const card = this.add.rectangle(x, y, width, 106, fill, 0.96).setOrigin(0).setStrokeStyle(1, caught ? 0x6fa7a3 : 0x415c62, 0.45);
 
     const image = this.add.image(x + 58, y + 53, species.assetId);
-    image.setDisplaySize(88, 46);
+    this.fitImageToBox(image, 88, 46);
     image.setAlpha(caught ? 0.96 : 1);
     if (!caught) {
       image.setTintFill(0x000000);
@@ -169,6 +169,11 @@ export class IndexScene extends Phaser.Scene {
       fontFamily: 'Inter, sans-serif',
     });
     container.add([card, image, name, scientificName, weights, catchLine]);
+  }
+
+  private fitImageToBox(image: Phaser.GameObjects.Image, maxWidth: number, maxHeight: number) {
+    const scale = Math.min(maxWidth / Math.max(1, image.width), maxHeight / Math.max(1, image.height));
+    image.setScale(scale);
   }
 
   private handleWheel(

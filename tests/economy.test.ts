@@ -3,7 +3,7 @@ import { assetManifest, chooseAssetTextureId, getAssetTextureIds } from '../src/
 import { fishSpecies } from '../src/data/fish';
 import { levels } from '../src/data/levels';
 import { baitById, lureById } from '../src/data/items';
-import { applyDeveloperCommand, parseFishDeveloperCommand } from '../src/systems/devConsole';
+import { applyDeveloperCommand, parseFishDeveloperCommand, parseSceneDeveloperCommand } from '../src/systems/devConsole';
 import {
   applySaleMultiplier,
   attractionChanceForFish,
@@ -18,10 +18,22 @@ import {
   lineStressGainPerSecond,
   randomFishWeight,
   recordCatch,
+  soloStressMultiplierForHookedFish,
 } from '../src/systems/economy';
+import { fishDebugUidForIndex, formatFishDebugLookup, formatFishDebugSummary, type FishDebugSnapshot } from '../src/systems/fishDebug';
+import {
+  fishDisplaySize,
+  fishDisplayWidth,
+  fishSchoolCohesionStrength,
+  fishSchoolSeparationRadius,
+  fishSchoolSeparationStrength,
+  fishWeightVisualMultiplier,
+} from '../src/systems/fishSizing';
 import { defaultLevelSave, defaultSave, getLevelSave, normalizeSave, SAVE_KEY, SaveStore } from '../src/systems/save';
 
 describe('fish economy', () => {
+  const speciesById = (id: string) => fishSpecies.find((species) => species.id === id)!;
+
   it('generates gaussian weights inside species bounds', () => {
     for (const species of fishSpecies) {
       const weights = [0, 0.2, 0.55, 0.91, 0.999].map((roll) => randomFishWeight(species, () => roll));
@@ -30,6 +42,72 @@ describe('fish economy', () => {
         expect(weight).toBeLessThanOrEqual(species.trophyWeightLb);
       }
     }
+  });
+
+  it('sizes fish by curated species length at average weight', () => {
+    const minnow = speciesById('minnow');
+    const bluegill = speciesById('bluegill');
+    const bass = speciesById('largemouth-bass');
+    const barracuda = speciesById('great-barracuda');
+    const tarpon = speciesById('tarpon');
+    const bullShark = speciesById('bull-shark');
+    const hammerhead = speciesById('hammerhead-shark');
+
+    expect(fishDisplayWidth(minnow, minnow.averageWeightLb)).toBeLessThan(fishDisplayWidth(bluegill, bluegill.averageWeightLb) * 0.65);
+    expect(fishDisplayWidth(bluegill, bluegill.averageWeightLb)).toBeLessThan(fishDisplayWidth(bass, bass.averageWeightLb));
+    expect(fishDisplayWidth(barracuda, barracuda.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(bass, bass.averageWeightLb) * 1.7);
+    expect(fishDisplayWidth(tarpon, tarpon.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(bass, bass.averageWeightLb) * 1.9);
+    expect(fishDisplayWidth(bullShark, bullShark.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(bass, bass.averageWeightLb) * 2.1);
+    expect(fishDisplayWidth(hammerhead, hammerhead.averageWeightLb)).toBeGreaterThan(fishDisplayWidth(bullShark, bullShark.averageWeightLb));
+  });
+
+  it('scales individual fish moderately by weight', () => {
+    const bass = speciesById('largemouth-bass');
+    const minimumWidth = fishDisplayWidth(bass, bass.minimumWeightLb);
+    const averageWidth = fishDisplayWidth(bass, bass.averageWeightLb);
+    const trophyWidth = fishDisplayWidth(bass, bass.trophyWeightLb);
+
+    expect(minimumWidth).toBeLessThan(averageWidth);
+    expect(trophyWidth).toBeGreaterThan(averageWidth);
+    expect(trophyWidth).toBeLessThan(averageWidth * 1.3);
+  });
+
+  it('keeps compact fish variants visually similar across source aspect ratios', () => {
+    const butterflyfish = speciesById('butterflyfish');
+    const compactVariant = fishDisplaySize(butterflyfish, butterflyfish.averageWeightLb, 436 / 409);
+    const longerVariant = fishDisplaySize(butterflyfish, butterflyfish.averageWeightLb, 694 / 389);
+    const compactArea = compactVariant.width * compactVariant.height;
+    const longerArea = longerVariant.width * longerVariant.height;
+
+    expect(compactArea).toBeCloseTo(longerArea);
+  });
+
+  it('keeps elongated fish length based on species size', () => {
+    const barracuda = speciesById('great-barracuda');
+    const displayWidth = fishDisplayWidth(barracuda, barracuda.averageWeightLb);
+
+    expect(fishDisplaySize(barracuda, barracuda.averageWeightLb, 1531 / 367).width).toBeCloseTo(displayWidth);
+  });
+
+  it('keeps fish weight visual multipliers capped', () => {
+    for (const species of fishSpecies) {
+      expect(fishWeightVisualMultiplier(species, species.minimumWeightLb)).toBeGreaterThanOrEqual(0.82);
+      expect(fishWeightVisualMultiplier(species, species.trophyWeightLb)).toBeLessThanOrEqual(1.28);
+    }
+  });
+
+  it('balances schooling separation and cohesion by species size', () => {
+    const minnow = speciesById('minnow');
+    const bluegill = speciesById('bluegill');
+    const bass = speciesById('largemouth-bass');
+    const hammerhead = speciesById('hammerhead-shark');
+
+    expect(fishSchoolSeparationRadius(minnow)).toBeGreaterThan(fishSchoolSeparationRadius(bluegill));
+    expect(fishSchoolSeparationRadius(minnow)).toBeLessThan(42);
+    expect(fishSchoolSeparationRadius(bluegill)).toBeGreaterThan(fishSchoolSeparationRadius(bass));
+    expect(fishSchoolSeparationRadius(bass)).toBeGreaterThan(fishSchoolSeparationRadius(hammerhead));
+    expect(fishSchoolCohesionStrength(minnow)).toBeGreaterThan(fishSchoolCohesionStrength(hammerhead));
+    expect(fishSchoolSeparationStrength(minnow)).toBeLessThan(fishSchoolSeparationStrength(hammerhead));
   });
 
   it('uses configured average weight as the gaussian center', () => {
@@ -120,6 +198,43 @@ describe('fish economy', () => {
     expect(lineStressGainPerSecond([{ weightLb: 48 }, { weightLb: 48 }], 96, sharkPlug)).toBeCloseTo(0.14);
     expect(effectiveLineLoadRatio([{ weightLb: 97 }], 96, starter)).toBeGreaterThan(1);
     expect(lineStressGainPerSecond([{ weightLb: 97 }], 96, starter)).toBeCloseTo((97 / 96) / 8);
+  });
+
+  it('applies solo stress multiplier only while one fish is hooked', () => {
+    const sharkPlug = lureById.get('shark-plug')!;
+
+    expect(soloStressMultiplierForHookedFish([{ weightLb: 96 }], sharkPlug)).toBe(0.5);
+    expect(soloStressMultiplierForHookedFish([{ weightLb: 48 }, { weightLb: 48 }], sharkPlug)).toBe(1);
+    expect(soloStressMultiplierForHookedFish([{ weightLb: 96 }])).toBe(1);
+  });
+
+  it('formats aggregate fish debug info', () => {
+    const fish: FishDebugSnapshot[] = [
+      { uid: 'F1', state: 'swimming', speciesId: 'bluegill', displayName: 'Bluegill', weightLb: 1.25, x: 10, y: 20, depthRatio: 0.2 },
+      { uid: 'F2', state: 'swimming', speciesId: 'bluegill', displayName: 'Bluegill', weightLb: 0.75, x: 18, y: 28, depthRatio: 0.25 },
+      { uid: 'F3', state: 'hooked', speciesId: 'largemouth-bass', displayName: 'Largemouth Bass', weightLb: 5, x: 40, y: 50, depthRatio: 0.45 },
+    ];
+
+    expect(formatFishDebugSummary(fish)).toBe('Fish: total 3, swimming 2, hooked 1, total weight 7.00 lb, species 2 | Bluegill x2 2.00 lb; Largemouth Bass x1 5.00 lb.');
+  });
+
+  it('formats fish debug lookup details and missing UID output', () => {
+    const fish: FishDebugSnapshot[] = [
+      { uid: 'A12', state: 'swimming', speciesId: 'bluegill', displayName: 'Bluegill', weightLb: 1.25, x: 10, y: 20, depthRatio: 0.2, velocityX: 3, velocityY: 4, speed: 5, schoolId: 7 },
+      { uid: 'A13', state: 'hooked', speciesId: 'largemouth-bass', displayName: 'Largemouth Bass', weightLb: 5, x: 40, y: 50, depthRatio: 0.45, pullSpeed: 12, pullAngle: 1.2, pullTurnSpeed: 3.4 },
+    ];
+
+    expect(formatFishDebugLookup(fish, 'a12')).toBe('A12 swimming Bluegill (bluegill): 1.25 lb, x=10, y=20, depth=0.20, speed=5.00, velocity=(3.00,4.00), school=7.');
+    expect(formatFishDebugLookup(fish, 'A13')).toBe('A13 hooked Largemouth Bass (largemouth-bass): 5.00 lb, x=40, y=50, depth=0.45, pullSpeed=12.00, pullAngle=1.20, pullTurn=3.40.');
+    expect(formatFishDebugLookup(fish, 'AA00')).toBe('No active fish with UID AA00.');
+  });
+
+  it('generates compact alphabetic fish debug UIDs', () => {
+    expect(fishDebugUidForIndex(0)).toBe('A00');
+    expect(fishDebugUidForIndex(99)).toBe('A99');
+    expect(fishDebugUidForIndex(100)).toBe('B00');
+    expect(fishDebugUidForIndex(2599)).toBe('Z99');
+    expect(fishDebugUidForIndex(2600)).toBe('AA00');
   });
 
   it('records sold catches into money and catch log', () => {
@@ -251,7 +366,39 @@ describe('shop and save behavior', () => {
     expect(getLevelSave(result.save, 'river').money).toBe(535);
   });
 
-  it('parses developer fish hook and spawn commands', () => {
+  it('applies developer unlock all command to maps and permanent tackle', () => {
+    const save = defaultSave();
+    const result = applyDeveloperCommand(save, 'unlock all');
+
+    expect(result.message).toBe('Unlocked all maps and permanent tackle.');
+    expect(result.save.unlockedLevelIds).toEqual(['river', 'lake', 'estuary', 'coral-reef']);
+    expect(getLevelSave(result.save, 'river').ownedRodIds).toEqual(['twig-rod', 'bamboo-rod', 'graphite-rod']);
+    expect(getLevelSave(result.save, 'lake').ownedLureIds).toEqual(['silver-spoon', 'minnow-crank', 'scented-sinker']);
+    expect(getLevelSave(result.save, 'estuary').ownedCrabPotIds).toEqual(['starter-crab-pot', 'wire-crab-pot']);
+    expect(getLevelSave(result.save, 'coral-reef').ownedBoatIds).toEqual(['bay-skiff', 'reef-runner']);
+  });
+
+  it('parses developer fish commands', () => {
+    expect(parseSceneDeveloperCommand('debug')).toEqual({
+      kind: 'command',
+      command: { action: 'debug' },
+    });
+    expect(parseFishDeveloperCommand('fish clear')).toEqual({
+      kind: 'command',
+      command: { action: 'clear' },
+    });
+    expect(parseFishDeveloperCommand('fish info')).toEqual({
+      kind: 'command',
+      command: { action: 'info' },
+    });
+    expect(parseFishDeveloperCommand('fish info UID=A12')).toEqual({
+      kind: 'command',
+      command: { action: 'info', uid: 'A12' },
+    });
+    expect(parseFishDeveloperCommand('fish info weight=2')).toEqual({
+      kind: 'error',
+      message: 'Fish info command must be: fish info [UID=X].',
+    });
     expect(parseFishDeveloperCommand('fish hook largemouth-bass weight=6.5 count=2')).toEqual({
       kind: 'command',
       command: { action: 'hook', speciesId: 'largemouth-bass', weightLb: 6.5, count: 2 },

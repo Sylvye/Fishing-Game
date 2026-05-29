@@ -1,17 +1,17 @@
 import Phaser from 'phaser';
 import { levelById } from '../data/levels';
-import { applyDeveloperCommand, parseFishDeveloperCommand } from '../systems/devConsole';
+import { applyDeveloperCommand, parseSceneDeveloperCommand } from '../systems/devConsole';
 import { getLevelSave, SaveStore } from '../systems/save';
-import type { FishDeveloperCommand } from '../systems/devConsole';
+import type { SceneDeveloperCommand } from '../systems/devConsole';
 
 interface FishDeveloperCommandTarget {
-  applyFishDeveloperCommand(command: FishDeveloperCommand): string;
+  applySceneDeveloperCommand(command: SceneDeveloperCommand): string;
 }
 
 export class DevConsoleScene extends Phaser.Scene {
   private readonly saveStore = new SaveStore();
   private inputText = '';
-  private outputText = 'Type a command. Examples: money add 500, fish spawn bluegill';
+  private outputText = 'Type a command. Examples: money add 500, unlock all, debug, fish info';
   private commandLine?: Phaser.GameObjects.Text;
   private outputLine?: Phaser.GameObjects.Text;
   private keyHandler?: (event: KeyboardEvent) => void;
@@ -35,32 +35,39 @@ export class DevConsoleScene extends Phaser.Scene {
 
   private render() {
     const { width } = this.scale;
+    const paddingX = 18;
+    const outputWidth = Math.max(240, width - paddingX * 2);
+    const panelHeight = 220;
     const save = this.saveStore.reload();
     const level = levelById.get(save.currentLevelId);
     const levelSave = getLevelSave(save);
     this.children.removeAll();
 
-    this.add.rectangle(0, 0, width, 132, 0x071116, 0.94).setOrigin(0).setStrokeStyle(2, 0xf4cf70, 0.85);
-    this.add.text(18, 14, 'Developer Console', {
+    this.add.rectangle(0, 0, width, panelHeight, 0x071116, 0.94).setOrigin(0).setStrokeStyle(2, 0xf4cf70, 0.85);
+    this.add.text(paddingX, 14, 'Developer Console', {
       color: '#f4fff8',
       fontSize: '18px',
       fontStyle: '700',
       fontFamily: 'Inter, sans-serif',
     });
-    this.add.text(18, 42, `${level?.displayName ?? 'Current level'}  |  $${levelSave.money}  |  Grave accent or ESC closes`, {
+    this.add.text(paddingX, 42, `${level?.displayName ?? 'Current level'}  |  $${levelSave.money}  |  Grave accent or ESC closes`, {
       color: '#b8d9d5',
       fontSize: '13px',
       fontFamily: 'Inter, sans-serif',
+      wordWrap: { width: outputWidth },
     });
-    this.commandLine = this.add.text(18, 72, `> ${this.inputText}_`, {
+    this.commandLine = this.add.text(paddingX, 72, `> ${this.inputText}_`, {
       color: '#ffd66b',
       fontSize: '16px',
       fontFamily: 'Consolas, monospace',
+      wordWrap: { width: outputWidth },
     });
-    this.outputLine = this.add.text(18, 102, this.outputText, {
+    this.outputLine = this.add.text(paddingX, 108, this.outputText, {
       color: '#d6ebe6',
       fontSize: '13px',
       fontFamily: 'Inter, sans-serif',
+      lineSpacing: 3,
+      wordWrap: { width: outputWidth },
     });
   }
 
@@ -89,16 +96,16 @@ export class DevConsoleScene extends Phaser.Scene {
   }
 
   private executeCommand() {
-    const fishCommand = parseFishDeveloperCommand(this.inputText);
-    if (fishCommand.kind === 'error') {
-      this.outputText = fishCommand.message;
+    const sceneCommand = parseSceneDeveloperCommand(this.inputText);
+    if (sceneCommand.kind === 'error') {
+      this.outputText = sceneCommand.message;
       this.inputText = '';
       this.render();
       return;
     }
-    if (fishCommand.kind === 'command') {
+    if (sceneCommand.kind === 'command') {
       const lake = this.scene.get('Lake') as Phaser.Scene & Partial<FishDeveloperCommandTarget>;
-      this.outputText = lake.applyFishDeveloperCommand?.(fishCommand.command) ?? 'Lake scene is not ready for fish commands.';
+      this.outputText = lake.applySceneDeveloperCommand?.(sceneCommand.command) ?? 'Lake scene is not ready for scene commands.';
       this.inputText = '';
       this.render();
       return;
